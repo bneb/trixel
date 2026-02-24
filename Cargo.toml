@@ -1,0 +1,25 @@
+[workspace]
+members = [
+    "crates/ternac_core",
+    "crates/ternac_cv",
+    "crates/ternac_solver",
+    "crates/ternac_render",
+    "crates/ternac",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+ternac_core = { path = "crates/ternac_core" }
+ternac_cv = { path = "crates/ternac_cv" }
+ternac_solver = { path = "crates/ternac_solver" }
+ternac_render = { path = "crates/ternac_render" }
+image = "0.25"
+imageproc = "0.25"
+thiserror = "2"
+clap = { version = "4", features = ["derive"] }
+z3 = "0.12"

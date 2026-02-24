@@ -1,0 +1,14 @@
+[package]
+name = "ternac_cv"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ternac_core = { workspace = true }
+ternac_solver = { workspace = true }
+image = { workspace = true }
+imageproc = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+ternac_render = { workspace = true }

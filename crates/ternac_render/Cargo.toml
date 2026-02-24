@@ -1,0 +1,10 @@
+[package]
+name = "ternac_render"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ternac_core = { workspace = true }
+ternac_solver = { workspace = true }
+image = { workspace = true }
+thiserror = { workspace = true }
