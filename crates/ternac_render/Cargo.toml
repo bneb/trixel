@@ -8,3 +8,5 @@ ternac_core = { workspace = true }
 ternac_solver = { workspace = true }
 image = { workspace = true }
 thiserror = { workspace = true }
+imageproc = { workspace = true }
+palette = "0.7"

@@ -155,10 +155,10 @@ impl TernaryCodec for MockCodec {
 /// 12 trits can represent 0–531,440 which is more than sufficient.
 pub struct MockEcc;
 
-const LENGTH_PREFIX_TRITS: usize = 12;
+pub const LENGTH_PREFIX_TRITS: usize = 12;
 
 /// Encode a `usize` into a fixed-width base-3 trit sequence (LSB first).
-fn encode_length(mut len: usize) -> [u8; LENGTH_PREFIX_TRITS] {
+pub fn encode_length(mut len: usize) -> [u8; LENGTH_PREFIX_TRITS] {
     let mut trits = [0u8; LENGTH_PREFIX_TRITS];
     for t in trits.iter_mut() {
         *t = (len % 3) as u8;
@@ -168,7 +168,7 @@ fn encode_length(mut len: usize) -> [u8; LENGTH_PREFIX_TRITS] {
 }
 
 /// Decode a fixed-width base-3 trit sequence (LSB first) into a `usize`.
-fn decode_length(trits: &[u8]) -> usize {
+pub fn decode_length(trits: &[u8]) -> usize {
     let mut val: usize = 0;
     let mut base: usize = 1;
     for &t in trits.iter().take(LENGTH_PREFIX_TRITS) {
@@ -236,7 +236,7 @@ use rs::ReedSolomon;
 ///   [2] = parity_count
 pub struct RsEcc;
 
-const RS_HEADER_SYMBOLS: usize = 3;
+pub const RS_HEADER_SYMBOLS: usize = 3;
 
 impl ErrorCorrection for RsEcc {
     fn apply_parity(payload: &[u8], ecc_capacity: f32) -> Result<Vec<u8>, EccError> {
@@ -343,31 +343,44 @@ impl ErrorCorrection for RsEcc {
         let gf = GF3::new();
 
         for pc in (2..=n / 2).step_by(2) {
-            let header_idx = pc + 2; // index of parity_count symbol in codeword
-            if header_idx >= n {
-                continue;
-            }
-            // If this position isn't an erasure, check if it matches pc
-            if !erasure_positions.contains(&header_idx) && symbols[header_idx] as usize != pc {
-                continue;
-            }
-            // Try decoding with this parity count
             let rs = ReedSolomon::new(&gf, pc);
             if let Ok(data_with_header) = rs.decode(&gf, &symbols, &erasure_positions) {
-                if data_with_header.len() >= RS_HEADER_SYMBOLS
-                    && data_with_header[2] as usize == pc
-                {
-                    let original_len =
-                        data_with_header[0] as usize + data_with_header[1] as usize * 729;
-                    let data_symbols = &data_with_header[RS_HEADER_SYMBOLS..];
-                    let mut trits =
-                        Vec::with_capacity(data_symbols.len() * TRITS_PER_SYMBOL);
-                    for &sym in data_symbols {
-                        trits.extend_from_slice(&gf3::symbol_to_trits(sym));
-                    }
-                    if original_len <= trits.len() {
-                        trits.truncate(original_len);
-                        return Ok(trits);
+                // The data might be padded at the front. Scan for a valid header sequence.
+                // We know parity_count must equal `pc`.
+                for offset in 0..data_with_header.len().saturating_sub(RS_HEADER_SYMBOLS - 1) {
+                    if data_with_header[offset + 2] as usize == pc {
+                        // Found a potential header. Validate original_len.
+                        let original_len = data_with_header[offset] as usize + data_with_header[offset + 1] as usize * 729;
+                        let data_symbols = &data_with_header[offset + RS_HEADER_SYMBOLS..];
+                        
+                        let max_capacity = data_symbols.len() * TRITS_PER_SYMBOL;
+                        // Reject original_len == 0 (black padding false-positive) and
+                        // non-multiple-of-6 (halftone noise false-positive).
+                        // The encoder always writes whole symbols, so original_len % 6 == 0.
+                        if original_len > 0 && original_len % TRITS_PER_SYMBOL == 0 && original_len <= max_capacity {
+                            let mut trits = Vec::with_capacity(max_capacity);
+                            for &sym in data_symbols {
+                                trits.extend_from_slice(&gf3::symbol_to_trits(sym));
+                            }
+                            trits.truncate(original_len);
+                            
+                            // Byte-range validation: every 6-trit chunk must decode to ≤ 255.
+                            // This filters out false-positive headers from high-entropy halftone
+                            // noise where symbols=[len_lo, len_hi, pc] appears by coincidence.
+                            let all_valid_bytes = trits.chunks(TRITS_PER_SYMBOL).all(|chunk| {
+                                let mut val: u32 = 0;
+                                let mut base: u32 = 1;
+                                for &t in chunk {
+                                    val += t as u32 * base;
+                                    base *= 3;
+                                }
+                                val <= 255
+                            });
+                            
+                            if all_valid_bytes {
+                                return Ok(trits);
+                            }
+                        }
                     }
                 }
             }

@@ -1,5 +1,6 @@
 use ternac_render::{AnchorRenderer, Renderer};
 use ternac_solver::anchor::{ANCHOR_PATTERNS, ANCHOR_SIZE, corner_positions};
+use ternac_core::TritMatrix;
 
 // ---------------------------------------------------------------------------
 // Anchor Renderer Tests

@@ -8,9 +8,10 @@ use ternac_core::TritMatrix;
 use thiserror::Error;
 
 pub mod anchor;
-pub mod z3_solver;
+pub mod gauss;
+pub mod gauss_solver;
 
-pub use z3_solver::Z3Solver;
+pub use gauss_solver::GaussSolver;
 
 // ---------------------------------------------------------------------------
 // Types

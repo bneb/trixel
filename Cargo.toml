@@ -22,4 +22,3 @@ image = "0.25"
 imageproc = "0.25"
 thiserror = "2"
 clap = { version = "4", features = ["derive"] }
-z3 = "0.12"

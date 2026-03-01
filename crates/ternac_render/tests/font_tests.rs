@@ -18,12 +18,13 @@ fn glyph_a_has_correct_dimensions() {
 #[test]
 fn glyph_a_top_row_matches_halo_pattern() {
     let glyph = glyphs::get_glyph('A');
-    // Top of 'A': F L D L F
-    assert_eq!(glyph[0][0], None,    "A[0][0] should be free");
-    assert_eq!(glyph[0][1], Some(2), "A[0][1] should be light halo");
+    // Top of 'A' with true transparency: L L D L L
+    // (corners are halo because they're 8-adjacent to the apex stroke)
+    assert_eq!(glyph[0][0], Some(2), "A[0][0] should be halo (adjacent to stroke)");
+    assert_eq!(glyph[0][1], Some(2), "A[0][1] should be halo");
     assert_eq!(glyph[0][2], Some(0), "A[0][2] should be dark stroke");
-    assert_eq!(glyph[0][3], Some(2), "A[0][3] should be light halo");
-    assert_eq!(glyph[0][4], None,    "A[0][4] should be free");
+    assert_eq!(glyph[0][3], Some(2), "A[0][3] should be halo");
+    assert_eq!(glyph[0][4], Some(2), "A[0][4] should be halo (adjacent to stroke)");
 }
 
 #[test]
@@ -39,14 +40,13 @@ fn glyph_a_crossbar_is_all_dark() {
 fn glyph_a_has_free_cells() {
     let glyph = glyphs::get_glyph('A');
     let free = free_cell_count(&glyph);
-    assert!(free > 0, "glyph 'A' should have free cells for Z3");
-    // Bottom row is all free × 5, plus corners = at least 9
-    assert!(free >= 9, "glyph 'A' should have at least 9 free cells, got {free}");
+    // With true transparency, 'A' has 2 free cells (bottom corners)
+    assert!(free > 0, "glyph 'A' should have free cells, got {free}");
 }
 
 #[test]
 fn all_defined_glyphs_are_5x7() {
-    for ch in "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .!?-:#".chars() {
+    for ch in "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .!?-:#/".chars() {
         let glyph = glyphs::get_glyph(ch);
         assert_eq!(glyph.len(), GLYPH_HEIGHT, "glyph '{ch}' height");
         for (r, row) in glyph.iter().enumerate() {
@@ -57,7 +57,7 @@ fn all_defined_glyphs_are_5x7() {
 
 #[test]
 fn all_glyphs_use_only_valid_states() {
-    for ch in "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .!?-:#".chars() {
+    for ch in "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .!?-:#/".chars() {
         let glyph = glyphs::get_glyph(ch);
         for row in &glyph {
             for &cell in row {
@@ -71,13 +71,18 @@ fn all_glyphs_use_only_valid_states() {
 }
 
 #[test]
-fn all_letter_glyphs_have_free_cells() {
-    // Every letter glyph should have at least some free cells for Z3
+fn most_letter_glyphs_have_free_cells() {
+    // Most letters should have at least some free/transparent cells.
+    // Very dense letters (G, Q, R) may have 0 — that's correct with true
+    // transparency, since every non-stroke pixel is still halo-adjacent.
+    let mut total_free = 0;
     for ch in "ABCDEFGHIJKLMNOPQRSTUVWXYZ".chars() {
         let glyph = glyphs::get_glyph(ch);
-        let free = free_cell_count(&glyph);
-        assert!(free > 0, "glyph '{ch}' should have free cells, got 0");
+        total_free += free_cell_count(&glyph);
     }
+    // Collectively, glyphs should have meaningful transparency
+    assert!(total_free > 30,
+        "letters should have significant transparency, got total free = {total_free}");
 }
 
 #[test]
@@ -133,22 +138,22 @@ fn constraints_respect_start_offset() {
     let constraints = TernacFont::string_to_constraints("A", 5, 10);
     let min_x = constraints.iter().map(|c| c.x).min().unwrap();
     let min_y = constraints.iter().map(|c| c.y).min().unwrap();
-    assert_eq!(min_x, 5, "constraints should start at x=5");
-    assert_eq!(min_y, 10, "constraints should start at y=10");
+    // The backing plate border extends 1 cell outside the glyph origin
+    assert_eq!(min_x, 4, "backing plate border should start at x=4 (glyph x=5 minus 1)");
+    assert_eq!(min_y, 9, "backing plate border should start at y=9 (glyph y=10 minus 1)");
 }
 
 #[test]
-fn multi_char_gap_is_constrained_light() {
-    // "AB" has a 1-column gap between A and B at x=5
+fn multi_char_gap_is_transparent() {
+    // "AB" has a 1-column transparent gap between A and B at x=5.
+    // With true transparency, the gap emits NO constraints.
     let constraints = TernacFont::string_to_constraints("AB", 0, 0);
     let gap_x = GLYPH_WIDTH; // column 5 = gap
     let gap_constraints: Vec<&ConstraintMask> = constraints.iter()
         .filter(|c| c.x == gap_x)
         .collect();
-    assert_eq!(gap_constraints.len(), GLYPH_HEIGHT, "gap should have {GLYPH_HEIGHT} constraints");
-    for c in &gap_constraints {
-        assert_eq!(c.required_state, 2, "gap cell at ({},{}) should be light", c.x, c.y);
-    }
+    assert_eq!(gap_constraints.len(), 0,
+        "transparent gap should have 0 constraints, got {}", gap_constraints.len());
 }
 
 #[test]
@@ -156,4 +161,69 @@ fn lowercase_treated_as_uppercase() {
     let upper = TernacFont::string_to_constraints("A", 0, 0);
     let lower = TernacFont::string_to_constraints("a", 0, 0);
     assert_eq!(upper, lower);
+}
+
+// ---------------------------------------------------------------------------
+// Backing Plate Tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn text_has_light_backing_plate_border() {
+    // Place "A" at (5, 5). The glyph is 5×7.
+    // The backing plate border should add 1-cell padding on all sides:
+    //   x range: 4 to 10  (5-1 to 5+5)
+    //   y range: 4 to 12  (5-1 to 5+7)
+    let constraints = TernacFont::string_to_constraints("A", 5, 5);
+
+    // Build a lookup set of all constrained positions
+    let constrained: std::collections::HashMap<(usize, usize), u8> = constraints.iter()
+        .map(|c| ((c.x, c.y), c.required_state))
+        .collect();
+
+    // Top border row (y=4): all cells from x=4..=10 should be State 2
+    for x in 4..=10 {
+        assert_eq!(constrained.get(&(x, 4)), Some(&2),
+            "top border at ({}, 4) should be State 2", x);
+    }
+
+    // Bottom border row (y=12): all cells from x=4..=10 should be State 2
+    for x in 4..=10 {
+        assert_eq!(constrained.get(&(x, 12)), Some(&2),
+            "bottom border at ({}, 12) should be State 2", x);
+    }
+
+    // Left border column (x=4): all cells from y=5..=11 should be State 2
+    for y in 5..=11 {
+        assert_eq!(constrained.get(&(4, y)), Some(&2),
+            "left border at (4, {}) should be State 2", y);
+    }
+
+    // Right border column (x=10): all cells from y=5..=11 should be State 2
+    for y in 5..=11 {
+        assert_eq!(constrained.get(&(10, y)), Some(&2),
+            "right border at (10, {}) should be State 2", y);
+    }
+}
+
+#[test]
+fn multi_char_backing_plate_spans_full_width() {
+    // "AB" at (2, 3): width = 5+1+5 = 11, height = 7  
+    // Backing plate: x from 1 to 13, y from 2 to 10
+    let constraints = TernacFont::string_to_constraints("AB", 2, 3);
+
+    let constrained: std::collections::HashMap<(usize, usize), u8> = constraints.iter()
+        .map(|c| ((c.x, c.y), c.required_state))
+        .collect();
+
+    // Top border row (y=2)
+    for x in 1..=13 {
+        assert_eq!(constrained.get(&(x, 2)), Some(&2),
+            "top border at ({}, 2) should be State 2", x);
+    }
+
+    // Bottom border row (y=10)
+    for x in 1..=13 {
+        assert_eq!(constrained.get(&(x, 10)), Some(&2),
+            "bottom border at ({}, 10) should be State 2", x);
+    }
 }
