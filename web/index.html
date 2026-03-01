@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Trixel Scanner</title>
+    <meta name="description" content="Scan Trixel ternary matrix codes with your camera">
+    <meta name="theme-color" content="#0a0a0f">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔬</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div id="app">
+        <!-- Header -->
+        <header id="header">
+            <h1>Trixel Scanner</h1>
+            <p class="subtitle">Point your camera at a matrix code</p>
+        </header>
+
+        <!-- Viewfinder -->
+        <div id="viewfinder">
+            <video id="camera" autoplay playsinline muted></video>
+            <canvas id="overlay" class="hidden"></canvas>
+            <div id="scan-frame">
+                <div class="corner tl"></div>
+                <div class="corner tr"></div>
+                <div class="corner bl"></div>
+                <div class="corner br"></div>
+            </div>
+            <div id="scan-line"></div>
+        </div>
+
+        <!-- Status -->
+        <div id="status">
+            <div id="status-dot"></div>
+            <span id="status-text">Initializing...</span>
+        </div>
+
+        <!-- Result Panel (hidden until decode) -->
+        <div id="result" class="hidden">
+            <div id="result-card">
+                <div id="result-icon">✓</div>
+                <p id="result-label">Decoded</p>
+                <p id="result-value"></p>
+                <div id="result-actions">
+                    <a id="result-open" href="#" target="_blank" rel="noopener" class="btn btn-primary">Open Link</a>
+                    <button id="result-copy" class="btn btn-secondary">Copy</button>
+                    <button id="result-rescan" class="btn btn-ghost">Scan Again</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- File upload fallback -->
+        <div id="upload-section">
+            <label id="upload-label" for="upload-input" class="btn btn-secondary">
+                📁 Upload Image
+            </label>
+            <input type="file" id="upload-input" accept="image/*" class="hidden">
+        </div>
+    </div>
+
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js').catch(() => { });
+        }
+    </script>
+    <script type="module" src="scanner.js"></script>
+</body>
+
+</html>

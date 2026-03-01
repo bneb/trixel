@@ -1,0 +1,13 @@
+[package]
+name = "trixel_cv"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+trixel_core = { workspace = true }
+trixel_solver = { workspace = true }
+image = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+trixel_render = { workspace = true }

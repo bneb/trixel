@@ -1249,58 +1249,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ternac"
-version = "0.1.0"
-dependencies = [
- "clap",
- "image",
- "ternac_core",
- "ternac_cv",
- "ternac_render",
- "ternac_solver",
-]
-
-[[package]]
-name = "ternac_core"
-version = "0.1.0"
-dependencies = [
- "thiserror",
-]
-
-[[package]]
-name = "ternac_cv"
-version = "0.1.0"
-dependencies = [
- "image",
- "imageproc",
- "ternac_core",
- "ternac_render",
- "ternac_solver",
- "thiserror",
-]
-
-[[package]]
-name = "ternac_render"
-version = "0.1.0"
-dependencies = [
- "image",
- "imageproc",
- "palette",
- "ternac_core",
- "ternac_solver",
- "thiserror",
-]
-
-[[package]]
-name = "ternac_solver"
-version = "0.1.0"
-dependencies = [
- "ternac_core",
- "ternac_render",
- "thiserror",
-]
-
-[[package]]
 name = "thiserror"
 version = "2.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1332,6 +1280,69 @@ dependencies = [
  "quick-error",
  "weezl",
  "zune-jpeg 0.4.21",
+]
+
+[[package]]
+name = "trixel"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "image",
+ "trixel_core",
+ "trixel_cv",
+ "trixel_render",
+ "trixel_solver",
+]
+
+[[package]]
+name = "trixel_core"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+]
+
+[[package]]
+name = "trixel_cv"
+version = "0.1.0"
+dependencies = [
+ "image",
+ "thiserror",
+ "trixel_core",
+ "trixel_render",
+ "trixel_solver",
+]
+
+[[package]]
+name = "trixel_render"
+version = "0.1.0"
+dependencies = [
+ "image",
+ "imageproc",
+ "palette",
+ "thiserror",
+ "trixel_core",
+ "trixel_solver",
+]
+
+[[package]]
+name = "trixel_scanner"
+version = "0.1.0"
+dependencies = [
+ "image",
+ "trixel_core",
+ "trixel_cv",
+ "trixel_render",
+ "trixel_solver",
+ "wasm-bindgen",
+]
+
+[[package]]
+name = "trixel_solver"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+ "trixel_core",
+ "trixel_render",
 ]
 
 [[package]]

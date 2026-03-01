@@ -1,10 +1,11 @@
 [workspace]
 members = [
-    "crates/ternac_core",
-    "crates/ternac_cv",
-    "crates/ternac_solver",
-    "crates/ternac_render",
-    "crates/ternac",
+    "crates/trixel_core",
+    "crates/trixel_cv",
+    "crates/trixel_solver",
+    "crates/trixel_render",
+    "crates/trixel_scanner",
+    "crates/trixel",
 ]
 resolver = "2"
 
@@ -14,10 +15,10 @@ edition = "2021"
 license = "MIT"
 
 [workspace.dependencies]
-ternac_core = { path = "crates/ternac_core" }
-ternac_cv = { path = "crates/ternac_cv" }
-ternac_solver = { path = "crates/ternac_solver" }
-ternac_render = { path = "crates/ternac_render" }
+trixel_core = { path = "crates/trixel_core" }
+trixel_cv = { path = "crates/trixel_cv" }
+trixel_solver = { path = "crates/trixel_solver" }
+trixel_render = { path = "crates/trixel_render" }
 image = "0.25"
 imageproc = "0.25"
 thiserror = "2"

@@ -1,0 +1,12 @@
+[package]
+name = "trixel_render"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+trixel_core = { workspace = true }
+trixel_solver = { workspace = true }
+image = { workspace = true }
+thiserror = { workspace = true }
+imageproc = { workspace = true }
+palette = "0.7"
