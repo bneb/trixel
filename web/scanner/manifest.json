@@ -2,7 +2,7 @@
     "name": "Trixel Scanner",
     "short_name": "Trixel",
     "description": "Scan Trixel ternary matrix codes with your camera",
-    "start_url": "/",
+    "start_url": "./",
     "display": "standalone",
     "background_color": "#0a0a0f",
     "theme_color": "#0a0a0f",

@@ -1,15 +1,15 @@
 // Trixel Scanner — Service Worker
 // Caches the app shell and WASM binary for offline use.
 
-const CACHE_NAME = 'trixel-scanner-v1';
+const CACHE_NAME = 'trixel-scanner-v2';
 const ASSETS = [
-    '/',
-    '/index.html',
-    '/style.css',
-    '/scanner.js',
-    '/pkg/trixel_scanner.js',
-    '/pkg/trixel_scanner_bg.wasm',
-    '/manifest.json',
+    './',
+    './index.html',
+    './style.css',
+    './scanner.js',
+    './pkg/trixel_scanner.js',
+    './pkg/trixel_scanner_bg.wasm',
+    './manifest.json',
 ];
 
 // Install: cache all app shell assets

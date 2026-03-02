@@ -3,74 +3,585 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Trixel Scanner</title>
-    <meta name="description" content="Scan Trixel ternary matrix codes with your camera">
-    <meta name="theme-color" content="#0a0a0f">
-    <link rel="manifest" href="manifest.json">
-    <link rel="icon"
-        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔬</text></svg>">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>trixel.to — The Scannable Canvas</title>
+    <meta name="description"
+        content="Trixel is the ternary pixel standard. Encode data into living illustrations with Reed-Solomon error correction and frosted-glass typography.">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Outfit:wght@700;900&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --snap-yellow: #FFFC00;
+            --trixel-teal: #75B3B8;
+            --trixel-indigo: #4F46E5;
+            --trixel-cyan: #06B6D4;
+            --spotify-black: #000000;
+            --pure-white: #FFFFFF;
+            --bg-canvas: #F4F4F7;
+            --text-main: #121212;
+            --text-muted: #666666;
+            --border: 1px solid rgba(0, 0, 0, 0.08);
+            --radius-lg: 40px;
+            --radius-md: 24px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: var(--bg-canvas);
+            color: var(--text-main);
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden;
+        }
+
+        /* --- DESKTOP LAYOUT --- */
+        .wrapper {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            height: 100vh;
+            padding: 20px;
+            gap: 20px;
+        }
+
+        /* --- SIDEBAR --- */
+        aside {
+            background: var(--spotify-black);
+            border-radius: var(--radius-md);
+            padding: 40px 30px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            color: white;
+        }
+
+        .logo-group {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            text-decoration: none;
+        }
+
+        .aperture {
+            width: 42px;
+            height: 42px;
+            background: white;
+            border-radius: 12px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .ap-tri-container {
+            width: 60%;
+            height: 60%;
+            position: relative;
+        }
+
+        .ap-tri {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            clip-path: polygon(50% 50%, 0% 100%, 100% 100%);
+        }
+
+        .ap-1 {
+            background: var(--snap-yellow);
+            transform: rotate(0deg);
+        }
+
+        .ap-2 {
+            background: var(--trixel-cyan);
+            transform: rotate(120deg);
+        }
+
+        .ap-3 {
+            background: var(--trixel-indigo);
+            transform: rotate(240deg);
+        }
+
+        .logo-text {
+            font-family: 'Outfit';
+            font-weight: 900;
+            font-size: 1.5rem;
+            color: white;
+            letter-spacing: -1px;
+        }
+
+        .nav-links {
+            list-style: none;
+            margin-top: 60px;
+        }
+
+        .nav-links li {
+            margin-bottom: 25px;
+        }
+
+        .nav-links a {
+            color: #888;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.95rem;
+            transition: color 0.2s;
+        }
+
+        .nav-links a:hover,
+        .nav-links a.active {
+            color: var(--snap-yellow);
+        }
+
+        /* --- MAIN CANVAS --- */
+        main {
+            overflow-y: auto;
+            display: grid;
+            grid-template-columns: repeat(12, 1fr);
+            grid-auto-rows: minmax(100px, auto);
+            gap: 20px;
+        }
+
+        /* --- BENTO TILES --- */
+        .bento {
+            background: var(--pure-white);
+            border-radius: var(--radius-lg);
+            padding: 50px;
+            border: var(--border);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        /* Hero */
+        .tile-hero {
+            grid-column: span 8;
+            grid-row: span 4;
+            background: var(--snap-yellow);
+            border: none;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .tile-hero h1 {
+            font-family: 'Outfit';
+            font-size: 6rem;
+            line-height: 0.9;
+            margin-bottom: 20px;
+        }
+
+        .tile-hero p {
+            font-size: 1.5rem;
+            max-width: 500px;
+            color: rgba(0, 0, 0, 0.7);
+            font-weight: 500;
+        }
+
+        /* Matrix Preview */
+        .tile-matrix {
+            grid-column: span 4;
+            grid-row: span 4;
+            background: var(--spotify-black);
+            color: white;
+            text-align: center;
+            padding: 30px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .tile-matrix img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            border-radius: 12px;
+        }
+
+        .matrix-label {
+            position: absolute;
+            bottom: 20px;
+            left: 0;
+            right: 0;
+            text-transform: uppercase;
+            font-weight: 800;
+            font-size: 0.7rem;
+            letter-spacing: 2px;
+            color: var(--trixel-teal);
+        }
+
+        /* Philosophy */
+        .tile-phi {
+            grid-column: span 6;
+            grid-row: span 3;
+        }
+
+        .tile-phi h2 {
+            font-family: 'Outfit';
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+        }
+
+        .tile-phi p {
+            font-size: 1.1rem;
+            color: var(--text-muted);
+            line-height: 1.6;
+        }
+
+        /* Density Stat */
+        .tile-density {
+            grid-column: span 6;
+            grid-row: span 3;
+            background: var(--trixel-indigo);
+            color: white;
+        }
+
+        .density-value {
+            font-family: 'Outfit';
+            font-size: 8rem;
+            line-height: 1;
+        }
+
+        /* How It Works */
+        .tile-how {
+            grid-column: span 12;
+            grid-row: span 2;
+        }
+
+        .tile-how h2 {
+            font-family: 'Outfit';
+            font-size: 2rem;
+            margin-bottom: 30px;
+        }
+
+        .how-steps {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 30px;
+        }
+
+        .how-step {
+            text-align: center;
+        }
+
+        .how-step .step-num {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: var(--spotify-black);
+            color: var(--snap-yellow);
+            font-family: 'Outfit';
+            font-weight: 900;
+            font-size: 1.2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 16px;
+        }
+
+        .how-step h3 {
+            font-family: 'Outfit';
+            font-size: 1.1rem;
+            margin-bottom: 8px;
+        }
+
+        .how-step p {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+
+        /* Tech */
+        .tile-tech {
+            grid-column: span 4;
+            grid-row: span 3;
+            background: #1a1a2e;
+            color: white;
+        }
+
+        .tile-tech h3 {
+            font-family: 'Outfit';
+            font-size: 1.3rem;
+            margin-bottom: 16px;
+        }
+
+        .tech-item {
+            margin-bottom: 16px;
+        }
+
+        .tech-item .label {
+            text-transform: uppercase;
+            font-size: 0.65rem;
+            letter-spacing: 1.5px;
+            color: var(--trixel-teal);
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .tech-item .value {
+            font-family: 'Outfit';
+            font-weight: 700;
+            font-size: 1rem;
+        }
+
+        /* Open Source */
+        .tile-oss {
+            grid-column: span 8;
+            grid-row: span 3;
+        }
+
+        .tile-oss h2 {
+            font-family: 'Outfit';
+            font-size: 2rem;
+            margin-bottom: 16px;
+        }
+
+        .tile-oss p {
+            font-size: 1.05rem;
+            color: var(--text-muted);
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+
+        .tile-oss .btn-github {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: var(--spotify-black);
+            color: white;
+            padding: 14px 28px;
+            border-radius: 100px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.95rem;
+            transition: transform 0.2s;
+        }
+
+        .tile-oss .btn-github:hover {
+            transform: translateY(-3px);
+        }
+
+        /* CTA */
+        .tile-cta {
+            grid-column: span 12;
+            flex-direction: row;
+            justify-content: space-between;
+            align-items: center;
+            padding: 40px 60px;
+            background: white;
+        }
+
+        .btn-main {
+            background: var(--spotify-black);
+            color: white;
+            padding: 20px 50px;
+            border-radius: 100px;
+            text-decoration: none;
+            font-family: 'Outfit';
+            font-weight: 700;
+            font-size: 1.2rem;
+            transition: transform 0.2s, background 0.2s;
+        }
+
+        .btn-main:hover {
+            transform: translateY(-5px);
+            background: var(--trixel-indigo);
+        }
+
+        /* --- MOBILE --- */
+        @media (max-width: 1024px) {
+            .wrapper {
+                grid-template-columns: 1fr;
+                height: auto;
+            }
+
+            aside {
+                display: none;
+            }
+
+            main {
+                grid-template-columns: 1fr;
+            }
+
+            .tile-hero,
+            .tile-matrix,
+            .tile-phi,
+            .tile-density,
+            .tile-how,
+            .tile-tech,
+            .tile-oss,
+            .tile-cta {
+                grid-column: span 1;
+                grid-row: auto;
+                padding: 40px 30px;
+            }
+
+            .tile-hero h1 {
+                font-size: 3.5rem;
+            }
+
+            .density-value {
+                font-size: 5rem;
+            }
+
+            .how-steps {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+
+            .tile-cta {
+                flex-direction: column;
+                gap: 20px;
+                text-align: center;
+            }
+        }
+    </style>
 </head>
 
 <body>
-    <div id="app">
-        <!-- Header -->
-        <header id="header">
-            <h1>Trixel Scanner</h1>
-            <p class="subtitle">Point your camera at a matrix code</p>
-        </header>
 
-        <!-- Viewfinder -->
-        <div id="viewfinder">
-            <video id="camera" autoplay playsinline muted></video>
-            <canvas id="overlay" class="hidden"></canvas>
-            <div id="scan-frame">
-                <div class="corner tl"></div>
-                <div class="corner tr"></div>
-                <div class="corner bl"></div>
-                <div class="corner br"></div>
+    <div class="wrapper">
+        <!-- Sidebar -->
+        <aside>
+            <div>
+                <a href="/" class="logo-group">
+                    <div class="aperture">
+                        <div class="ap-tri-container">
+                            <div class="ap-tri ap-1"></div>
+                            <div class="ap-tri ap-2"></div>
+                            <div class="ap-tri ap-3"></div>
+                        </div>
+                    </div>
+                    <span class="logo-text">trixel.to</span>
+                </a>
+
+                <ul class="nav-links">
+                    <li><a href="/" class="active">Home</a></li>
+                    <li><a href="/scanner/">Scanner</a></li>
+                    <li><a href="https://github.com/bneb/trixel">Source</a></li>
+                </ul>
             </div>
-            <div id="scan-line"></div>
-        </div>
 
-        <!-- Status -->
-        <div id="status">
-            <div id="status-dot"></div>
-            <span id="status-text">Initializing...</span>
-        </div>
+            <div style="color: #444; font-size: 0.8rem; font-weight: 600;">
+                SYSTEM V.1.0 // 2026
+            </div>
+        </aside>
 
-        <!-- Result Panel (hidden until decode) -->
-        <div id="result" class="hidden">
-            <div id="result-card">
-                <div id="result-icon">✓</div>
-                <p id="result-label">Decoded</p>
-                <p id="result-value"></p>
-                <div id="result-actions">
-                    <a id="result-open" href="#" target="_blank" rel="noopener" class="btn btn-primary">Open Link</a>
-                    <button id="result-copy" class="btn btn-secondary">Copy</button>
-                    <button id="result-rescan" class="btn btn-ghost">Scan Again</button>
+        <!-- Main Content -->
+        <main>
+            <!-- Hero -->
+            <section class="bento tile-hero">
+                <h1>Art that<br>scans.</h1>
+                <p>The world's first ternary pixel standard. Encode data into living illustrations that any phone camera
+                    can read.</p>
+            </section>
+
+            <!-- Matrix Preview -->
+            <section class="bento tile-matrix">
+                <img src="hero-matrix.png" alt="Trixel frosted-glass matrix with embedded typography">
+                <div class="matrix-label">Live Frosted-Glass Output</div>
+            </section>
+
+            <!-- Philosophy -->
+            <section class="bento tile-phi">
+                <h2>Beyond<br>binary.</h2>
+                <p>QR codes encode data in black and white. Trixels encode in three states — dark, mid, light — mapped
+                    to the original image's hue and saturation. Your illustrations become the data. The data becomes
+                    your art.</p>
+            </section>
+
+            <!-- Density Stat -->
+            <section class="bento tile-density">
+                <span
+                    style="text-transform: uppercase; font-weight: 800; font-size: 0.8rem; letter-spacing: 2px;">Ternary
+                    Advantage</span>
+                <div class="density-value">3⁶</div>
+                <p style="font-weight: 600;">729 states per codeword. GF(3⁶) Galois field arithmetic with Reed-Solomon
+                    error correction.</p>
+            </section>
+
+            <!-- How It Works -->
+            <section class="bento tile-how">
+                <h2>How it works</h2>
+                <div class="how-steps">
+                    <div class="how-step">
+                        <div class="step-num">1</div>
+                        <h3>Encode</h3>
+                        <p>Feed a URL, text, or any data alongside your illustration. The Gaussian solver weaves your
+                            payload into a ternary matrix that preserves the image's visual fidelity.</p>
+                    </div>
+                    <div class="how-step">
+                        <div class="step-num">2</div>
+                        <h3>Render</h3>
+                        <p>The HSL renderer maps each trit to the original pixel's hue and saturation. Typography gets
+                            frosted-glass immunity. Anchors calibrate the scanner.</p>
+                    </div>
+                    <div class="how-step">
+                        <div class="step-num">3</div>
+                        <h3>Scan</h3>
+                        <p>Point any phone camera at the matrix. The on-device WASM decoder runs AnchorVision
+                            calibration, Reed-Solomon error correction, and recovers the payload in milliseconds.</p>
+                    </div>
                 </div>
-            </div>
-        </div>
+            </section>
 
-        <!-- File upload fallback -->
-        <div id="upload-section">
-            <label id="upload-label" for="upload-input" class="btn btn-secondary">
-                📁 Upload Image
-            </label>
-            <input type="file" id="upload-input" accept="image/*" class="hidden">
-        </div>
+            <!-- Tech Specs -->
+            <section class="bento tile-tech">
+                <h3>Under the hood</h3>
+                <div class="tech-item">
+                    <div class="label">Field Arithmetic</div>
+                    <div class="value">GF(3⁶) — 729-state Galois field</div>
+                </div>
+                <div class="tech-item">
+                    <div class="label">Error Correction</div>
+                    <div class="value">Reed-Solomon over ternary</div>
+                </div>
+                <div class="tech-item">
+                    <div class="label">Solver</div>
+                    <div class="value">Gaussian elimination, no Z3</div>
+                </div>
+                <div class="tech-item">
+                    <div class="label">Renderer</div>
+                    <div class="value">HSL luminance-band halftone</div>
+                </div>
+                <div class="tech-item">
+                    <div class="label">Scanner</div>
+                    <div class="value">1.2MB WASM, runs on-device</div>
+                </div>
+                <div class="tech-item">
+                    <div class="label">Language</div>
+                    <div class="value">Rust → WebAssembly</div>
+                </div>
+            </section>
+
+            <!-- Open Source -->
+            <section class="bento tile-oss">
+                <h2>Open standard. Open source.</h2>
+                <p>Trixel is built in Rust with zero unsafe code and zero external solvers. The entire encode/decode
+                    pipeline — from GF(3⁶) arithmetic to the WASM camera scanner — ships as a single workspace of six
+                    crates.</p>
+                <a href="https://github.com/bneb/trixel" class="btn-github">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+                        <path
+                            d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+                    </svg>
+                    View on GitHub
+                </a>
+            </section>
+
+            <!-- CTA -->
+            <section class="bento tile-cta">
+                <div>
+                    <h2 style="font-family: 'Outfit'; font-size: 2rem;">Ready to scan?</h2>
+                    <p style="color: var(--text-muted);">Open the scanner on your phone and point it at any Trixel
+                        matrix.</p>
+                </div>
+                <a href="/scanner/" class="btn-main">Open Scanner</a>
+            </section>
+        </main>
     </div>
 
-    <script>
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/sw.js').catch(() => { });
-        }
-    </script>
-    <script type="module" src="scanner.js"></script>
 </body>
 
 </html>
