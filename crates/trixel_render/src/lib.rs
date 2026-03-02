@@ -169,21 +169,16 @@ impl Renderer for AnchorRenderer {
 }
 
 impl AnchorRenderer {
-    /// Context-aware halftone renderer with Typography Immunity.
+    /// Context-aware halftone renderer with Triangle Quadrant system.
     ///
-    /// Takes the original resized image, the solved `TritMatrix`, and the raw
-    /// `FontEngine` constraint mask. For every module:
+    /// Each HSL art cell is divided into 4 triangles meeting at the cell center.
+    /// Each triangle samples an independent hue/saturation from a 2× source image,
+    /// but all 4 share the same luminosity (trit value). This gives 4× visual
+    /// fidelity with zero impact on data capacity or scanner reliability.
     ///
-    /// **Priority 1 (Font Immunity):** If `font_mask[y][x]` is `Some(state)`,
-    /// the cell is painted with a hardcoded high-contrast color, bypassing HSL:
-    ///   - `Some(0)` → pure black  `[0, 0, 0]`
-    ///   - `Some(1)` → pure white  `[255, 255, 255]`  (stroke)
-    ///   - `Some(2)` → pure black  `[0, 0, 0]`        (halo/quiet zone)
-    ///
-    /// **Priority 2 (Anchor Immunity):** Anchor regions use strict B/W.
-    ///
-    /// **Priority 3 (HSL Art):** All other cells fetch the original pixel's
-    /// Hue and Saturation, then override Lightness per trit state.
+    /// **Priority 1 (Font Immunity):** Font mask cells are flat-fill (crisp edges).
+    /// **Priority 2 (Anchor Immunity):** Anchor regions use strict B/W flat-fill.
+    /// **Priority 3 (Triangle HSL Art):** 4 triangles per cell, independent hue.
     pub fn render_halftone_png(
         matrix: &TritMatrix,
         module_pixel_size: u32,
@@ -199,16 +194,19 @@ impl AnchorRenderer {
 
         let n = matrix.width; // assumes square
 
-        // Resize the original image to match the matrix grid
+        // Resize the original image to 2× the matrix grid for sub-pixel sampling.
+        // Each grid cell maps to a 2×2 block of source pixels.
         let scaled = original_image.resize_exact(
-            n as u32,
-            n as u32,
+            (n * 2) as u32,
+            (matrix.height * 2) as u32,
             image::imageops::FilterType::Lanczos3,
         );
 
         let img_w = n as u32 * module_pixel_size;
         let img_h = matrix.height as u32 * module_pixel_size;
         let mut img: RgbImage = ImageBuffer::new(img_w, img_h);
+
+        let half = module_pixel_size as f32 / 2.0;
 
         for gy in 0..matrix.height {
             for gx in 0..n {
@@ -221,16 +219,16 @@ impl AnchorRenderer {
                     None
                 };
 
-                let color = if let Some(fs) = font_state {
-                    match fs {
-                        // STROKE: pure opaque black for crisp letter lines.
-                        0 => [0u8, 0, 0],
-                        // FROSTED GLASS HALO: inherit the original pixel's
-                        // hue and saturation, but force L=0.90.  This keeps
-                        // the cell firmly in the State 2 (Light) CV band
-                        // while letting the illustration bleed through.
+                let px_x = gx as u32 * module_pixel_size;
+                let px_y = gy as u32 * module_pixel_size;
+
+                if let Some(fs) = font_state {
+                    // FONT IMMUNITY: flat fill for crisp typography
+                    let color = match fs {
+                        0 => [0u8, 0, 0],       // stroke: pure black
                         2 => {
-                            let orig_px = scaled.get_pixel(gx as u32, gy as u32);
+                            // Frosted glass halo: sample center pixel
+                            let orig_px = scaled.get_pixel((gx * 2) as u32, (gy * 2) as u32);
                             let srgb = Srgb::new(
                                 orig_px[0] as f32 / 255.0,
                                 orig_px[1] as f32 / 255.0,
@@ -245,48 +243,95 @@ impl AnchorRenderer {
                                 (rgb.blue * 255.0).round() as u8,
                             ]
                         }
-                        _ => [128u8, 128, 128], // fallback: mid-gray
+                        _ => [128u8, 128, 128],
+                    };
+                    for dy in 0..module_pixel_size {
+                        for dx in 0..module_pixel_size {
+                            img.put_pixel(px_x + dx, px_y + dy, image::Rgb(color));
+                        }
                     }
                 } else if anchor::is_in_anchor_region(gx, gy, n) {
-                    // ANCHOR IMMUNITY: strict B/W for CV baseline.
-                    match trit {
+                    // ANCHOR IMMUNITY: strict B/W flat fill for CV baseline
+                    let color = match trit {
                         0 => [0u8, 0, 0],
                         1 => [128u8, 128, 128],
                         2 => [255u8, 255, 255],
                         _ => [128u8, 128, 128],
+                    };
+                    for dy in 0..module_pixel_size {
+                        for dx in 0..module_pixel_size {
+                            img.put_pixel(px_x + dx, px_y + dy, image::Rgb(color));
+                        }
                     }
                 } else {
-                    // HSL ART: preserve original hue/saturation
-                    let orig_px = scaled.get_pixel(gx as u32, gy as u32);
-                    let srgb = Srgb::new(
-                        orig_px[0] as f32 / 255.0,
-                        orig_px[1] as f32 / 255.0,
-                        orig_px[2] as f32 / 255.0,
-                    );
-                    let hsl: Hsl = srgb.into_color();
+                    // TRIANGLE HSL ART: 4 triangles per cell, independent hue.
+                    //
+                    // Sub-pixel layout in the 2× source image:
+                    //   (2*gx, 2*gy)     = top-left     → Top triangle
+                    //   (2*gx+1, 2*gy)   = top-right    → Right triangle
+                    //   (2*gx+1, 2*gy+1) = bottom-right → Bottom triangle
+                    //   (2*gx, 2*gy+1)   = bottom-left  → Left triangle
 
-                    let target_l = match trit {
+                    let target_l: f32 = match trit {
                         0 => 0.10,
                         1 => 0.50,
                         2 => 0.90,
                         _ => 0.50,
                     };
 
-                    let modified_hsl = Hsl::new(hsl.hue, hsl.saturation, target_l);
-                    let rgb: Srgb = modified_hsl.into_color();
+                    // Pre-compute the 4 triangle colors from 4 sub-pixels.
+                    let sub_coords: [(u32, u32); 4] = [
+                        ((gx * 2) as u32, (gy * 2) as u32),         // Top
+                        ((gx * 2 + 1) as u32, (gy * 2) as u32),     // Right
+                        ((gx * 2 + 1) as u32, (gy * 2 + 1) as u32), // Bottom
+                        ((gx * 2) as u32, (gy * 2 + 1) as u32),     // Left
+                    ];
 
-                    [
-                        (rgb.red * 255.0).round() as u8,
-                        (rgb.green * 255.0).round() as u8,
-                        (rgb.blue * 255.0).round() as u8,
-                    ]
-                };
+                    let mut tri_colors = [[0u8; 3]; 4];
+                    for (i, &(sx, sy)) in sub_coords.iter().enumerate() {
+                        let orig_px = scaled.get_pixel(sx, sy);
+                        let srgb = Srgb::new(
+                            orig_px[0] as f32 / 255.0,
+                            orig_px[1] as f32 / 255.0,
+                            orig_px[2] as f32 / 255.0,
+                        );
+                        let hsl: Hsl = srgb.into_color();
+                        let modified = Hsl::new(hsl.hue, hsl.saturation, target_l);
+                        let rgb: Srgb = modified.into_color();
+                        tri_colors[i] = [
+                            (rgb.red * 255.0).round() as u8,
+                            (rgb.green * 255.0).round() as u8,
+                            (rgb.blue * 255.0).round() as u8,
+                        ];
+                    }
 
-                let px_x = gx as u32 * module_pixel_size;
-                let px_y = gy as u32 * module_pixel_size;
-                for dy in 0..module_pixel_size {
-                    for dx in 0..module_pixel_size {
-                        img.put_pixel(px_x + dx, px_y + dy, image::Rgb(color));
+                    // Rasterize: for each pixel, determine which triangle it
+                    // belongs to using a diagonal quadrant test.
+                    //
+                    //  TL ──────── TR     Triangle membership:
+                    //  │ \  TOP  / │      rx = dx - center_x
+                    //  │  \    /   │      ry = dy - center_y
+                    //  │ L  \/  R  │
+                    //  │   /  \    │      if |ry| > |rx|: TOP (ry<0) or BOTTOM (ry>0)
+                    //  │  / BOT \  │      else:           LEFT (rx<0) or RIGHT (rx>0)
+                    //  BL ──────── BR
+                    for dy in 0..module_pixel_size {
+                        for dx in 0..module_pixel_size {
+                            let rx = dx as f32 - half + 0.5;
+                            let ry = dy as f32 - half + 0.5;
+
+                            let tri_idx = if ry.abs() > rx.abs() {
+                                if ry < 0.0 { 0 } else { 2 } // Top or Bottom
+                            } else {
+                                if rx > 0.0 { 1 } else { 3 } // Right or Left
+                            };
+
+                            img.put_pixel(
+                                px_x + dx,
+                                px_y + dy,
+                                image::Rgb(tri_colors[tri_idx]),
+                            );
+                        }
                     }
                 }
             }
