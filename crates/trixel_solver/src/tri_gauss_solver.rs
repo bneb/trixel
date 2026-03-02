@@ -7,7 +7,7 @@ use trixel_core::gf3::{self, GF3, TRITS_PER_SYMBOL, FIELD_ORDER};
 use trixel_core::{LENGTH_PREFIX_TRITS, RS_HEADER_SYMBOLS, encode_length};
 use trixel_core::trigrid::TriGrid;
 use crate::{ConstraintMask, SolverError, tri_anchor};
-use crate::gauss::{Gf3Matrix, solve_gf3};
+use crate::gauss::{Gf3Matrix, solve_gf3_with_default};
 use crate::gauss_solver::{compute_transform_matrix, build_parity_check_matrix};
 
 // ---------------------------------------------------------------------------
@@ -220,9 +220,14 @@ impl TriGaussSolver {
         }
 
         // --- Step 5: Solve A·x = b over GF(3) ---
-        let solution = solve_gf3(&a_mat, &b_vec).ok_or(SolverError::Unsatisfiable)?;
+        // Default free variables to 2 (light) to avoid dark voids in halftone.
+        // Free variables are unconstrained by parity equations — any value works.
+        let solution = solve_gf3_with_default(&a_mat, &b_vec, 2).ok_or(SolverError::Unsatisfiable)?;
 
         // --- Step 6: Reconstruct the full codeword ---
+        // NOTE: Free variables MUST default to 0 here — they are part of the RS
+        // codeword and must satisfy the parity-check equations. The visual
+        // "lightness" default happens in Step 7 for cells beyond the codeword.
         let mut full_trits = vec![0u8; codeword_trits];
 
         for idx in 0..codeword_trits {

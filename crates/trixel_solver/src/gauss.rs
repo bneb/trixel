@@ -94,6 +94,14 @@ fn gf3_neg(a: u8) -> u8 {
 ///
 /// For under-determined systems (rank < n), free variables are set to 0.
 pub fn solve_gf3(a: &Gf3Matrix, b: &[u8]) -> Option<Vec<u8>> {
+    solve_gf3_with_default(a, b, 0)
+}
+
+/// Like `solve_gf3`, but free (unpivoted) variables are set to `default_free`
+/// instead of 0. Since free variables are unconstrained by any equation,
+/// any GF(3) value is valid — the pivot variables adjust through
+/// back-substitution to maintain A·x = b.
+pub fn solve_gf3_with_default(a: &Gf3Matrix, b: &[u8], default_free: u8) -> Option<Vec<u8>> {
     assert_eq!(a.rows, b.len(), "A.rows must equal b.len()");
 
     let m = a.rows;
@@ -169,7 +177,7 @@ pub fn solve_gf3(a: &Gf3Matrix, b: &[u8]) -> Option<Vec<u8>> {
     }
 
     // Back-substitute: build solution vector
-    let mut x = vec![0u8; n]; // Free variables default to 0 (required for RS parity correctness)
+    let mut x = vec![default_free % 3; n];
 
     // Process pivot rows in reverse order
     for r in (0..m).rev() {

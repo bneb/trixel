@@ -131,8 +131,24 @@ impl TriAnchorRenderer {
         let img_h = grid.rows as u32 * cell_h;
         let mut img: RgbImage = ImageBuffer::from_pixel(img_w, img_h, image::Rgb([255, 255, 255]));
 
-        // Resize source to match grid dimensions (1 pixel per cell)
-        let scaled = original_image.resize_exact(
+        // Flatten alpha over white BEFORE resizing to prevent transparent
+        // pixels (0,0,0,0) from becoming solid black (0,0,0) in RGB space.
+        let flattened = {
+            let rgba = original_image.to_rgba8();
+            let (w, h) = (rgba.width(), rgba.height());
+            let mut rgb = image::RgbImage::new(w, h);
+            for (x, y, px) in rgba.enumerate_pixels() {
+                let a = px[3] as f32 / 255.0;
+                let r = (px[0] as f32 * a + 255.0 * (1.0 - a)).round() as u8;
+                let g = (px[1] as f32 * a + 255.0 * (1.0 - a)).round() as u8;
+                let b = (px[2] as f32 * a + 255.0 * (1.0 - a)).round() as u8;
+                rgb.put_pixel(x, y, image::Rgb([r, g, b]));
+            }
+            DynamicImage::ImageRgb8(rgb)
+        };
+
+        // Resize flattened source to match grid dimensions (1 pixel per cell)
+        let scaled = flattened.resize_exact(
             grid.cols as u32,
             grid.rows as u32,
             image::imageops::FilterType::Lanczos3,
