@@ -22,3 +22,4 @@
 *.profdata
 lcov.info
 tarpaulin-report.html
+.wrangler/

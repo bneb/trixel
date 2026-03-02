@@ -1,0 +1,15 @@
+{
+  "name": "trixel_scanner",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "trixel_scanner_bg.wasm",
+    "trixel_scanner.js",
+    "trixel_scanner.d.ts"
+  ],
+  "main": "trixel_scanner.js",
+  "types": "trixel_scanner.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
