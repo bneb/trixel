@@ -5,6 +5,7 @@
 
 pub mod gf3;
 pub mod rs;
+pub mod trigrid;
 
 use thiserror::Error;
 

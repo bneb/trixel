@@ -10,6 +10,8 @@ use thiserror::Error;
 pub mod anchor;
 pub mod gauss;
 pub mod gauss_solver;
+pub mod tri_anchor;
+pub mod tri_gauss_solver;
 
 pub use gauss_solver::GaussSolver;
 

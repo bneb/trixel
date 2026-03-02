@@ -64,6 +64,10 @@ enum Commands {
         /// Defaults to 60 when --image is used, otherwise auto-calculated.
         #[arg(long)]
         min_side: Option<usize>,
+
+        /// Use triangular grid geometry instead of square cells.
+        #[arg(long, default_value_t = false)]
+        triangular: bool,
     },
     /// Decode a Trixel PNG image back to a string.
     Decode {
@@ -123,7 +127,74 @@ fn main() {
             text_y,
             image,
             min_side,
+            triangular,
         } => {
+            // ---------------------------------------------------------------
+            // Triangular Grid Path
+            // ---------------------------------------------------------------
+            if triangular {
+                let color_rgb = parse_hex_color(&color).unwrap_or_else(|e| {
+                    eprintln!("error: bad color '{}': {}", color, e);
+                    std::process::exit(1);
+                });
+
+                let trits = MockCodec::encode_bytes(data.as_bytes()).unwrap_or_else(|e| {
+                    eprintln!("error: codec encode failed: {e}");
+                    std::process::exit(1);
+                });
+
+                // Default triangular grid: 2:1 col:row ratio
+                let min = min_side.unwrap_or(if image.is_some() { 40 } else { 20 });
+                let tri_rows = min;
+                let tri_cols = min * 2;
+
+                use trixel_solver::tri_gauss_solver::TriGaussSolver;
+                use trixel_render::tri_render::TriAnchorRenderer;
+
+                let grid = TriGaussSolver::resolve_trigrid(&trits, tri_rows, tri_cols, &[])
+                    .unwrap_or_else(|e| {
+                        eprintln!("error: tri solver failed: {e}");
+                        std::process::exit(1);
+                    });
+
+                let img = if let Some(ref img_path) = image {
+                    let dyn_img = image::open(img_path).unwrap_or_else(|e| {
+                        eprintln!("error: failed to open image '{}': {e}", img_path.display());
+                        std::process::exit(1);
+                    });
+                    let font_mask: Vec<Vec<Option<u8>>> = vec![vec![None; tri_cols]; tri_rows];
+                    TriAnchorRenderer::render_halftone_trigrid(&grid, module_size, &dyn_img, &font_mask)
+                        .unwrap_or_else(|e| {
+                            eprintln!("error: tri halftone render failed: {e}");
+                            std::process::exit(1);
+                        })
+                } else {
+                    TriAnchorRenderer::render_trigrid(&grid, module_size, color_rgb)
+                        .unwrap_or_else(|e| {
+                            eprintln!("error: tri render failed: {e}");
+                            std::process::exit(1);
+                        })
+                };
+
+                img.save(&output).unwrap_or_else(|e| {
+                    eprintln!("error: failed to save '{}': {e}", output.display());
+                    std::process::exit(1);
+                });
+
+                println!(
+                    "Encoded {} bytes → {}×{} tri-grid ({} cells) → {}",
+                    data.len(),
+                    grid.cols,
+                    grid.rows,
+                    grid.total_cells(),
+                    output.display()
+                );
+                return;
+            }
+
+            // ---------------------------------------------------------------
+            // Square Grid Path (existing)
+            // ---------------------------------------------------------------
             let color_rgb = parse_hex_color(&color).unwrap_or_else(|e| {
                 eprintln!("error: bad color '{}': {}", color, e);
                 std::process::exit(1);

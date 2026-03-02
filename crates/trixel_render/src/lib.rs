@@ -14,6 +14,7 @@ use palette::{Srgb, Hsl, IntoColor};
 pub mod glyphs;
 pub mod font;
 pub mod halftone;
+pub mod tri_render;
 
 pub use font::TrixelFont;
 pub use halftone::HalftoneEngine;
