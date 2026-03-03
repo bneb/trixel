@@ -9,6 +9,7 @@ use trixel_solver::anchor::{ANCHOR_PATTERNS, ANCHOR_SIZE, corner_positions};
 use thiserror::Error;
 
 pub mod geometry;
+pub mod tri_cv;
 
 // ---------------------------------------------------------------------------
 // Error Types
