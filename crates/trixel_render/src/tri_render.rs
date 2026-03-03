@@ -1,14 +1,100 @@
 //! # Triangular Grid Renderer
 //!
-//! Renders a `TriGrid` into a physical PNG image.
+//! Renders a `TriGrid` into a physical PNG image using **Asymmetric Perceptual
+//! Encoding**. Colors are shifted in CIELAB space to satisfy scanner Rec.601
+//! Luma thresholds while minimizing perceptual ΔE.
+//!
 //! Each cell is an actual triangle — up-pointing `▲` or down-pointing `▽`.
 
 use image::{DynamicImage, GenericImageView, ImageBuffer, RgbImage};
 use trixel_core::trigrid::TriGrid;
 use trixel_solver::tri_anchor;
-use palette::{Srgb, Hsl, IntoColor};
+use palette::{Srgb, Lab, IntoColor};
 
 use crate::RenderError;
+
+// ---------------------------------------------------------------------------
+// Rec.601 Luma & CIELAB Color Shifting
+// ---------------------------------------------------------------------------
+
+/// Rec.601 Luma from linear RGB (0-255 scale).
+/// Y = 0.299*R + 0.587*G + 0.114*B
+#[inline]
+fn rec601_luma(r: u8, g: u8, b: u8) -> f32 {
+    0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32
+}
+
+/// Scanner Luma thresholds (Rec.601 Y values).
+/// State 0 (Dark):  Y ≤ 89
+/// State 1 (Mid):   89 < Y ≤ 165
+/// State 2 (Light): Y > 165
+const LUMA_THRESHOLD_01: f32 = 89.0;   // boundary between State 0 and State 1
+const LUMA_THRESHOLD_12: f32 = 165.0;  // boundary between State 1 and State 2
+
+/// Target Luma ranges for each trit state (midpoints of scanner bands).
+/// These are the ideal Y values the encoder aims for.
+fn target_luma_range(trit: u8) -> (f32, f32) {
+    match trit {
+        0 => (0.0, LUMA_THRESHOLD_01),          // Y ∈ [0, 89]
+        1 => (LUMA_THRESHOLD_01 + 1.0, LUMA_THRESHOLD_12), // Y ∈ [90, 165]
+        2 => (LUMA_THRESHOLD_12 + 1.0, 255.0),  // Y ∈ [166, 255]
+        _ => (90.0, 165.0),
+    }
+}
+
+/// Shift a source CIELAB color to satisfy a Rec.601 Luma constraint.
+///
+/// Preserves the chromaticity (a*, b*) of the source color and adjusts
+/// only L* (CIE Lightness) via bisection search to find the L* value
+/// whose resulting RGB satisfies the target Luma range.
+///
+/// This is the core of Asymmetric Perceptual Encoding: minimal ΔE for
+/// maximum scanner discriminability.
+fn shift_lab_for_luma(source_lab: Lab, trit: u8, correction: f32) -> [u8; 3] {
+    let (y_min, y_max) = target_luma_range(trit);
+    let y_target = ((y_min + y_max) / 2.0 + correction * 255.0).clamp(y_min, y_max);
+
+    // Bisection search: find L* such that the resulting RGB has Y ≈ y_target
+    let mut lo: f32 = 0.0;
+    let mut hi: f32 = 100.0;
+    let mut best_rgb = [0u8; 3];
+    let mut best_err = f32::MAX;
+
+    for _ in 0..20 {
+        let mid = (lo + hi) / 2.0;
+        let candidate = Lab::new(mid, source_lab.a, source_lab.b);
+        let srgb: Srgb = candidate.into_color();
+
+        // Clamp to valid sRGB gamut
+        let r = (srgb.red.clamp(0.0, 1.0) * 255.0).round() as u8;
+        let g = (srgb.green.clamp(0.0, 1.0) * 255.0).round() as u8;
+        let b = (srgb.blue.clamp(0.0, 1.0) * 255.0).round() as u8;
+
+        let y = rec601_luma(r, g, b);
+        let err = (y - y_target).abs();
+
+        if err < best_err {
+            best_err = err;
+            best_rgb = [r, g, b];
+        }
+
+        if y < y_target {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+
+    // Final verification: ensure we're within the scanner band
+    let y_final = rec601_luma(best_rgb[0], best_rgb[1], best_rgb[2]);
+    if y_final < y_min || y_final > y_max {
+        // Fallback: grayscale at the target luma
+        let gray = y_target.clamp(0.0, 255.0).round() as u8;
+        return [gray, gray, gray];
+    }
+
+    best_rgb
+}
 
 // ---------------------------------------------------------------------------
 // Geometry Helpers
@@ -154,6 +240,12 @@ impl TriAnchorRenderer {
             image::imageops::FilterType::Lanczos3,
         );
 
+        // Compute Floyd-Steinberg error diffusion corrections
+        let scaled_gray = scaled.to_luma8();
+        let corrections = crate::tri_diffusion::diffuse_lightness(
+            grid, &scaled_gray, grid.rows, grid.cols,
+        );
+
         for row in 0..grid.rows {
             for col in 0..grid.cols {
                 let trit = grid.get(col, row).unwrap_or(0);
@@ -170,53 +262,38 @@ impl TriAnchorRenderer {
                     match fs {
                         0 => [0u8, 0, 0],
                         2 => {
+                            // Font glass: CIELAB shift to State 2
                             let orig_px = scaled.get_pixel(col as u32, row as u32);
                             let srgb = Srgb::new(
                                 orig_px[0] as f32 / 255.0,
                                 orig_px[1] as f32 / 255.0,
                                 orig_px[2] as f32 / 255.0,
                             );
-                            let hsl: Hsl = srgb.into_color();
-                            let glass = Hsl::new(hsl.hue, hsl.saturation, 0.90);
-                            let rgb: Srgb = glass.into_color();
-                            [
-                                (rgb.red * 255.0).round() as u8,
-                                (rgb.green * 255.0).round() as u8,
-                                (rgb.blue * 255.0).round() as u8,
-                            ]
+                            let lab: Lab = srgb.into_color();
+                            shift_lab_for_luma(lab, 2, 0.0)
                         }
                         _ => [128u8, 128, 128],
                     }
                 } else if tri_anchor::is_in_tri_anchor_region(col, row, grid.rows, grid.cols) {
-                    // Anchor immunity: strict B/W
+                    // Anchor immunity: strict Luma-correct B/W/Mid
                     match trit {
-                        0 => [0u8, 0, 0],
-                        1 => [128u8, 128, 128],
-                        2 => [255u8, 255, 255],
+                        0 => [0u8, 0, 0],         // Y = 0
+                        1 => [128u8, 128, 128],   // Y = 128
+                        2 => [255u8, 255, 255],   // Y = 255
                         _ => [128u8, 128, 128],
                     }
                 } else {
-                    // HSL art: preserve hue, override lightness
+                    // CIELAB Perceptual Encoding: preserve chromaticity (a*, b*),
+                    // shift L* to satisfy scanner Rec.601 Luma thresholds.
                     let orig_px = scaled.get_pixel(col as u32, row as u32);
                     let srgb = Srgb::new(
                         orig_px[0] as f32 / 255.0,
                         orig_px[1] as f32 / 255.0,
                         orig_px[2] as f32 / 255.0,
                     );
-                    let hsl: Hsl = srgb.into_color();
-                    let target_l = match trit {
-                        0 => 0.10,
-                        1 => 0.50,
-                        2 => 0.90,
-                        _ => 0.50,
-                    };
-                    let modified = Hsl::new(hsl.hue, hsl.saturation, target_l);
-                    let rgb: Srgb = modified.into_color();
-                    [
-                        (rgb.red * 255.0).round() as u8,
-                        (rgb.green * 255.0).round() as u8,
-                        (rgb.blue * 255.0).round() as u8,
-                    ]
+                    let lab: Lab = srgb.into_color();
+                    let correction = corrections[row][col];
+                    shift_lab_for_luma(lab, trit, correction)
                 };
 
                 let (px_x, px_y) = cell_pixel_origin(col, row, cell_w, cell_h);

@@ -15,6 +15,7 @@ pub mod glyphs;
 pub mod font;
 pub mod halftone;
 pub mod tri_render;
+pub mod tri_diffusion;
 
 pub use font::TrixelFont;
 pub use halftone::HalftoneEngine;
