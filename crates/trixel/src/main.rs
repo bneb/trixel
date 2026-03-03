@@ -148,22 +148,78 @@ fn main() {
                 let tri_rows = min;
                 let tri_cols = min * 2;
 
-                use trixel_solver::tri_gauss_solver::TriGaussSolver;
+                use trixel_solver::tri_gauss_solver::{TriGaussSolver, tri_grid_to_flat_coords};
                 use trixel_render::tri_render::TriAnchorRenderer;
 
-                let grid = TriGaussSolver::resolve_trigrid(&trits, tri_rows, tri_cols, &[])
-                    .unwrap_or_else(|e| {
-                        eprintln!("error: tri solver failed: {e}");
-                        std::process::exit(1);
-                    });
-
-                let img = if let Some(ref img_path) = image {
-                    let dyn_img = image::open(img_path).unwrap_or_else(|e| {
+                // If an image is provided, open it BEFORE the solver to build
+                // Zhang's image-guided target trit map.
+                let source_image = image.as_ref().map(|img_path| {
+                    image::open(img_path).unwrap_or_else(|e| {
                         eprintln!("error: failed to open image '{}': {e}", img_path.display());
                         std::process::exit(1);
-                    });
+                    })
+                });
+
+                let grid = if let Some(ref src_img) = source_image {
+                    // Build target trit map from source image centroids.
+                    // Resize image to match the grid, flatten alpha over white,
+                    // then quantize each non-anchor cell centroid to {0, 1, 2}.
+                    let cell_coords = tri_grid_to_flat_coords(tri_rows, tri_cols);
+                    let cell_h = module_size;
+                    let cell_w = module_size;
+                    let img_w = tri_cols as u32 * cell_w / 2 + cell_w;
+                    let img_h = tri_rows as u32 * cell_h + cell_h;
+
+                    // Flatten alpha over white
+                    let rgba = src_img.to_rgba8();
+                    let mut flat_rgb = image::RgbImage::new(rgba.width(), rgba.height());
+                    for (x, y, px) in rgba.enumerate_pixels() {
+                        let a = px.0[3] as f32 / 255.0;
+                        let r = (px.0[0] as f32 * a + 255.0 * (1.0 - a)) as u8;
+                        let g = (px.0[1] as f32 * a + 255.0 * (1.0 - a)) as u8;
+                        let b = (px.0[2] as f32 * a + 255.0 * (1.0 - a)) as u8;
+                        flat_rgb.put_pixel(x, y, image::Rgb([r, g, b]));
+                    }
+                    let flat_dyn = image::DynamicImage::ImageRgb8(flat_rgb);
+                    let resized = flat_dyn.resize_exact(img_w, img_h, image::imageops::FilterType::Lanczos3);
+                    let gray = resized.to_luma8();
+
+                    let target_trits: Vec<u8> = cell_coords.iter().map(|&(col, row)| {
+                        use trixel_core::trigrid::TriGrid;
+                        let is_up = TriGrid::is_up(col, row);
+                        let px_x = col as u32 * cell_w / 2 + cell_w / 2;
+                        let py = row as u32 * cell_h;
+                        let px_y = if is_up { py + 2 * cell_h / 3 } else { py + cell_h / 3 };
+
+                        let lum = if px_x < gray.width() && px_y < gray.height() {
+                            gray.get_pixel(px_x, px_y).0[0]
+                        } else {
+                            255 // off-grid → white → State 2
+                        };
+
+                        // Quantize: 0–85 → State 0 (dark), 86–170 → State 1 (mid), 171–255 → State 2 (light)
+                        if lum < 86 { 0 }
+                        else if lum < 171 { 1 }
+                        else { 2 }
+                    }).collect();
+
+                    TriGaussSolver::resolve_trigrid_image_guided(
+                        &trits, tri_rows, tri_cols, &[], &target_trits
+                    ).unwrap_or_else(|e| {
+                        eprintln!("error: tri solver failed: {e}");
+                        std::process::exit(1);
+                    })
+                } else {
+                    TriGaussSolver::resolve_trigrid(&trits, tri_rows, tri_cols, &[])
+                        .unwrap_or_else(|e| {
+                            eprintln!("error: tri solver failed: {e}");
+                            std::process::exit(1);
+                        })
+                };
+
+                let img = if let Some(ref src_img) = source_image {
                     let font_mask: Vec<Vec<Option<u8>>> = vec![vec![None; tri_cols]; tri_rows];
-                    TriAnchorRenderer::render_halftone_trigrid(&grid, module_size, &dyn_img, &font_mask)
+                    TriAnchorRenderer::render_halftone_trigrid(&grid, module_size, src_img, &font_mask)
                         .unwrap_or_else(|e| {
                             eprintln!("error: tri halftone render failed: {e}");
                             std::process::exit(1);
