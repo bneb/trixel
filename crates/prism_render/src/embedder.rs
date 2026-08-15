@@ -50,10 +50,10 @@ pub struct EmbedConfig {
 impl Default for EmbedConfig {
     fn default() -> Self {
         Self {
-            pilot_amplitude: 0.40,
-            carrier_scale_b: 0.60,
-            carrier_scale_l: 0.35,
-            jnd_clamp_max: 4.5,
+            pilot_amplitude: 0.75,
+            carrier_scale_b: 1.20,
+            carrier_scale_l: 0.65,
+            jnd_clamp_max: 6.0,
             diffusion_step: 0.5,
         }
     }
