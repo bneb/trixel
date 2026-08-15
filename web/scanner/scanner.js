@@ -7,6 +7,8 @@ import initPrism, { PrismScanner } from './prism_pkg/prism_wasm.js';
 
 // ---- DOM Elements ----
 const video = document.getElementById('camera');
+const viewfinder = document.getElementById('viewfinder');
+const scanFrame = document.getElementById('scan-frame');
 const overlay = document.getElementById('overlay');
 const statusDot = document.getElementById('status-dot');
 const statusText = document.getElementById('status-text');
@@ -23,9 +25,14 @@ let wasmReady = false;
 let scanning = false;
 let scanTimer = null;
 let prismScanner = null;
+let frameIndex = 0;
 
-// Maximum dimension for downscaling (saves WASM memory on hi-res cameras)
-const MAX_SCAN_DIM = 720;
+// Standard square sampling resolution for reticle scan (divisible by 32 & 24)
+const SCAN_RES = 384;
+const offscreenCanvas = document.createElement('canvas');
+offscreenCanvas.width = SCAN_RES;
+offscreenCanvas.height = SCAN_RES;
+const offscreenCtx = offscreenCanvas.getContext('2d', { willReadFrequently: true });
 
 // ---- Initialize WASM ----
 async function initWasm() {
@@ -48,14 +55,14 @@ async function startCamera() {
         const stream = await navigator.mediaDevices.getUserMedia({
             video: {
                 facingMode: { ideal: 'environment' },
-                width: { ideal: 1280 },
-                height: { ideal: 720 },
+                width: { ideal: 1920, min: 1280 },
+                height: { ideal: 1080, min: 720 },
             },
             audio: false,
         });
         video.srcObject = stream;
         await video.play();
-        setStatus('scanning', 'Scanning for PrismCode...');
+        setStatus('scanning', 'Align code within frame');
         scanning = true;
         startScanLoop();
     } catch (e) {
@@ -64,10 +71,59 @@ async function startCamera() {
     }
 }
 
-// ---- Scan Loop (RGBA raw-byte path) ----
+// Calculate video crop box corresponding to on-screen reticle
+function getReticleCrop(scaleFactor = 1.0) {
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    if (!vw || !vh) return null;
+
+    const vRect = viewfinder.getBoundingClientRect();
+    const fRect = scanFrame.getBoundingClientRect();
+
+    const vAspect = vw / vh;
+    const elAspect = vRect.width / vRect.height;
+
+    let scale, renderW, renderH, offsetX, offsetY;
+    if (elAspect > vAspect) {
+        scale = vw / vRect.width;
+        renderW = vRect.width;
+        renderH = vRect.width / vAspect;
+        offsetX = 0;
+        offsetY = (renderH - vRect.height) / 2;
+    } else {
+        scale = vh / vRect.height;
+        renderH = vRect.height;
+        renderW = vRect.height * vAspect;
+        offsetX = (renderW - vRect.width) / 2;
+        offsetY = 0;
+    }
+
+    const relX = (fRect.left - vRect.left + offsetX);
+    const relY = (fRect.top - vRect.top + offsetY);
+    const relW = fRect.width;
+    const relH = fRect.height;
+
+    const centerX = relX + relW / 2;
+    const centerY = relY + relH / 2;
+    const scaledW = relW * scaleFactor;
+    const scaledH = relH * scaleFactor;
+
+    let sx = (centerX - scaledW / 2) * scale;
+    let sy = (centerY - scaledH / 2) * scale;
+    let sw = scaledW * scale;
+    let sh = scaledH * scale;
+
+    sx = Math.max(0, Math.min(vw - 1, sx));
+    sy = Math.max(0, Math.min(vh - 1, sy));
+    sw = Math.min(vw - sx, sw);
+    sh = Math.min(vh - sy, sh);
+
+    return { sx, sy, sw, sh };
+}
+
+// ---- Scan Loop ----
 function startScanLoop() {
     if (scanTimer) return;
-    const ctx = overlay.getContext('2d', { willReadFrequently: true });
 
     function tick() {
         if (!scanning || !wasmReady || !prismScanner) {
@@ -83,34 +139,42 @@ function startScanLoop() {
                 return;
             }
 
-            // Downscale to MAX_SCAN_DIM to optimize frame rate
-            const scale = Math.min(1, MAX_SCAN_DIM / Math.max(vw, vh));
-            const w = Math.round(vw * scale);
-            const h = Math.round(vh * scale);
-            overlay.width = w;
-            overlay.height = h;
+            frameIndex++;
 
-            // Draw video frame to canvas
-            ctx.drawImage(video, 0, 0, w, h);
+            // Multi-scale candidate windows:
+            // Frame 0: Exact reticle (1.0x)
+            // Frame 1: Tight reticle (0.9x)
+            // Frame 2: Wide reticle (1.15x)
+            // Frame 3: Center 70% of camera
+            const scales = [1.0, 0.9, 1.15, 1.3];
+            const currentScale = scales[frameIndex % scales.length];
 
-            // Extract RGBA pixel buffer directly
-            const imageData = ctx.getImageData(0, 0, w, h);
+            const crop = getReticleCrop(currentScale);
+            if (crop && crop.sw > 10 && crop.sh > 10) {
+                offscreenCtx.drawImage(
+                    video,
+                    crop.sx, crop.sy, crop.sw, crop.sh,
+                    0, 0, SCAN_RES, SCAN_RES
+                );
 
-            // PrismCode Perceptual Soft Decoder
-            const prismResult = prismScanner.scan_frame(imageData.data, w, h);
-            if (prismResult) {
-                debugOverlay.textContent = '✓ ' + prismResult;
-                debugOverlay.style.color = '#00ff88';
-                onDecodeSuccess(prismResult);
-                return;
+                const imgData = offscreenCtx.getImageData(0, 0, SCAN_RES, SCAN_RES);
+                const prismResult = prismScanner.scan_frame(imgData.data, SCAN_RES, SCAN_RES);
+
+                if (prismResult) {
+                    debugOverlay.style.display = 'block';
+                    debugOverlay.textContent = '✓ ' + prismResult;
+                    debugOverlay.style.color = '#00ff88';
+                    onDecodeSuccess(prismResult);
+                    return;
+                }
             }
         } catch (err) {
             debugOverlay.style.display = 'block';
             debugOverlay.textContent = 'FRAME_ERROR: ' + err;
         }
 
-        // ~8 fps scan rate (125ms throttle)
-        scanTimer = setTimeout(() => requestAnimationFrame(tick), 125);
+        // 10 fps scanning rate (100ms interval)
+        scanTimer = setTimeout(() => requestAnimationFrame(tick), 100);
     }
 
     scanTimer = requestAnimationFrame(tick);
@@ -150,7 +214,7 @@ function rescan() {
     resultDiv.classList.add('hidden');
     scanLine.style.animationPlayState = 'running';
     scanning = true;
-    setStatus('scanning', 'Scanning for PrismCode...');
+    setStatus('scanning', 'Align code within frame');
     startScanLoop();
 }
 
@@ -182,16 +246,16 @@ uploadInput.addEventListener('change', async (e) => {
         if (prismRes) {
             onDecodeSuccess(prismRes);
         } else {
-            setStatus('error', 'No PrismCode pattern found in image');
+            setStatus('error', 'No pattern detected');
             setTimeout(() => {
-                if (scanning) setStatus('scanning', 'Scanning...');
+                if (scanning) setStatus('scanning', 'Align code within frame');
                 else setStatus('ready', 'Ready');
             }, 3000);
         }
     } catch (err) {
         setStatus('error', `Decode failed: ${err}`);
         setTimeout(() => {
-            if (scanning) setStatus('scanning', 'Scanning...');
+            if (scanning) setStatus('scanning', 'Align code within frame');
             else setStatus('ready', 'Ready');
         }, 3000);
     }
