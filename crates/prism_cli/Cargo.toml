@@ -1,0 +1,19 @@
+[package]
+name = "prism_cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "prism"
+path = "src/main.rs"
+
+[dependencies]
+prism_core = { path = "../prism_core" }
+prism_hvs = { path = "../prism_hvs" }
+prism_sync = { path = "../prism_sync" }
+prism_render = { path = "../prism_render" }
+prism_cv = { path = "../prism_cv" }
+clap.workspace = true
+image.workspace = true
+thiserror.workspace = true

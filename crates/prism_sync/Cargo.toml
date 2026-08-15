@@ -1,0 +1,10 @@
+[package]
+name = "prism_sync"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+
+[dev-dependencies]

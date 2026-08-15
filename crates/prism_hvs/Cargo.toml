@@ -1,0 +1,12 @@
+[package]
+name = "prism_hvs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+prism_core = { path = "../prism_core" }
+thiserror.workspace = true
+image.workspace = true
+
+[dev-dependencies]

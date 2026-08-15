@@ -1,7 +1,0 @@
-[package]
-name = "trixel_core"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]
-thiserror = { workspace = true }

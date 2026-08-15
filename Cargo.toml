@@ -1,11 +1,12 @@
 [workspace]
 members = [
-    "crates/trixel_core",
-    "crates/trixel_cv",
-    "crates/trixel_solver",
-    "crates/trixel_render",
-    "crates/trixel_scanner",
-    "crates/trixel",
+    "crates/prism_core",
+    "crates/prism_hvs",
+    "crates/prism_sync",
+    "crates/prism_render",
+    "crates/prism_cv",
+    "crates/prism_cli",
+    "crates/prism_wasm",
 ]
 resolver = "2"
 
@@ -15,10 +16,6 @@ edition = "2021"
 license = "MIT"
 
 [workspace.dependencies]
-trixel_core = { path = "crates/trixel_core" }
-trixel_cv = { path = "crates/trixel_cv" }
-trixel_solver = { path = "crates/trixel_solver" }
-trixel_render = { path = "crates/trixel_render" }
 image = "0.25"
 imageproc = "0.25"
 thiserror = "2"
