@@ -83,10 +83,10 @@
 
     <script>
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js').catch(() => { });
+            navigator.serviceWorker.register('sw.js?v=5').catch(() => { });
         }
     </script>
-    <script type="module" src="scanner.js"></script>
+    <script type="module" src="scanner.js?v=5"></script>
 </body>
 
 </html>

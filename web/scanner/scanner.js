@@ -3,7 +3,7 @@
 // Continuous HVS Residual Modulation + QC-LDPC Soft Belief Propagation
 // =========================================================================
 
-import initPrism, { PrismScanner } from './prism_pkg/prism_wasm.js';
+import initPrism, { PrismScanner } from './prism_pkg/prism_wasm.js?v=5';
 
 // ---- DOM Elements ----
 const video = document.getElementById('camera');
@@ -20,12 +20,16 @@ const resultRescan = document.getElementById('result-rescan');
 const uploadInput = document.getElementById('upload-input');
 const scanLine = document.getElementById('scan-line');
 const debugOverlay = document.getElementById('debug-overlay');
+const cameraPrompt = document.getElementById('camera-prompt');
+const startCamBtn = document.getElementById('start-cam-btn');
 
 let wasmReady = false;
 let scanning = false;
 let scanTimer = null;
 let prismScanner = null;
 let frameIndex = 0;
+let framesScanned = 0;
+let lastLogTime = 0;
 
 // Standard square sampling resolution for reticle scan (divisible by 32 & 24)
 const SCAN_RES = 384;
@@ -45,17 +49,22 @@ async function initWasm() {
     } catch (e) {
         setStatus('error', 'Failed to load decoder');
         console.error('WASM init failed:', e);
+        showDebug(`WASM_INIT_ERROR: ${e.message || e}`);
     }
 }
 
-const cameraPrompt = document.getElementById('camera-prompt');
-const startCamBtn = document.getElementById('start-cam-btn');
+function showDebug(msg, color = '#ff4444') {
+    if (!debugOverlay) return;
+    debugOverlay.style.display = 'block';
+    debugOverlay.style.color = color;
+    debugOverlay.textContent = msg;
+}
 
-// ---- Camera ----
+// ---- Android & iOS Resilient Camera Starter ----
 async function startCamera() {
     setStatus('loading', 'Starting camera...');
     
-    // Ensure critical iOS Safari video properties
+    // Ensure critical mobile video element attributes
     video.muted = true;
     video.playsInline = true;
     video.setAttribute('playsinline', '');
@@ -64,46 +73,57 @@ async function startCamera() {
     video.setAttribute('autoplay', '');
 
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        console.warn('getUserMedia not supported in this browser context');
         cameraPrompt.classList.remove('hidden');
-        setStatus('ready', 'Use Upload Image');
+        setStatus('error', 'Camera not supported — use Upload');
+        showDebug('getUserMedia not supported in this browser context');
         return;
     }
 
     let stream = null;
-    try {
-        // Preferred mobile environment camera
-        stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-                facingMode: { ideal: 'environment' },
-                width: { ideal: 1280 },
-                height: { ideal: 720 },
-            },
-            audio: false,
-        });
-    } catch (err1) {
-        console.warn('Environment camera request failed, retrying generic video:', err1);
+    const constraintList = [
+        // 1. Back environment camera with ideal resolution
+        { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+        // 2. Simple environment camera without size constraints
+        { video: { facingMode: 'environment' }, audio: false },
+        // 3. Fallback to any available camera (front/back)
+        { video: true, audio: false }
+    ];
+
+    for (const constraints of constraintList) {
         try {
-            // Unconstrained video fallback
-            stream = await navigator.mediaDevices.getUserMedia({
-                video: true,
-                audio: false,
-            });
-        } catch (err2) {
-            console.error('All getUserMedia requests failed:', err2);
-            cameraPrompt.classList.remove('hidden');
-            setStatus('ready', 'Tap Enable Camera or use Upload');
-            return;
+            stream = await navigator.mediaDevices.getUserMedia(constraints);
+            if (stream) break;
+        } catch (err) {
+            console.warn('Constraint attempt failed:', constraints, err);
         }
+    }
+
+    if (!stream) {
+        cameraPrompt.classList.remove('hidden');
+        setStatus('error', 'Camera permission denied or blocked');
+        showDebug('Permission denied. Tap the 🔒 icon in Chrome to allow camera access.');
+        return;
     }
 
     cameraPrompt.classList.add('hidden');
     video.srcObject = stream;
+
+    // Wait for Android Chrome metadata before calling play()
+    await new Promise((resolve) => {
+        if (video.readyState >= 2 && video.videoWidth > 0) {
+            return resolve();
+        }
+        video.onloadedmetadata = () => resolve();
+        video.onloadeddata = () => resolve();
+        setTimeout(resolve, 800);
+    });
+
     try {
         await video.play();
     } catch (e) {
-        console.warn('video.play() was prevented:', e);
+        console.warn('video.play() rejected:', e);
     }
+
     setStatus('scanning', 'Align code within frame');
     scanning = true;
     startScanLoop();
@@ -183,13 +203,10 @@ function startScanLoop() {
             }
 
             frameIndex++;
+            framesScanned++;
 
             // Multi-scale candidate windows:
-            // Frame 0: Exact reticle (1.0x)
-            // Frame 1: Tight reticle (0.9x)
-            // Frame 2: Wide reticle (1.15x)
-            // Frame 3: Center 70% of camera
-            const scales = [1.0, 0.9, 1.15, 1.3];
+            const scales = [1.0, 0.88, 1.12, 1.25];
             const currentScale = scales[frameIndex % scales.length];
 
             const crop = getReticleCrop(currentScale);
@@ -204,16 +221,20 @@ function startScanLoop() {
                 const prismResult = prismScanner.scan_frame(imgData.data, SCAN_RES, SCAN_RES);
 
                 if (prismResult) {
-                    debugOverlay.style.display = 'block';
-                    debugOverlay.textContent = '✓ ' + prismResult;
-                    debugOverlay.style.color = '#00ff88';
+                    showDebug('✓ ' + prismResult, '#00ff88');
                     onDecodeSuccess(prismResult);
                     return;
                 }
             }
+
+            // Periodic live telemetry to debug overlay
+            const now = performance.now();
+            if (now - lastLogTime > 1200) {
+                lastLogTime = now;
+                showDebug(`Camera: ${vw}x${vh} | Scanned ${framesScanned} frames | Looking for PrismCode`, '#88ccff');
+            }
         } catch (err) {
-            debugOverlay.style.display = 'block';
-            debugOverlay.textContent = 'FRAME_ERROR: ' + err;
+            showDebug('FRAME_ERROR: ' + (err.message || err));
         }
 
         // 10 fps scanning rate (100ms interval)
@@ -289,7 +310,7 @@ uploadInput.addEventListener('change', async (e) => {
         if (prismRes) {
             onDecodeSuccess(prismRes);
         } else {
-            setStatus('error', 'No pattern detected');
+            setStatus('error', 'No pattern detected in upload');
             setTimeout(() => {
                 if (scanning) setStatus('scanning', 'Align code within frame');
                 else setStatus('ready', 'Ready');

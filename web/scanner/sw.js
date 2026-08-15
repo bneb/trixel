@@ -1,7 +1,7 @@
 // PrismCode Scanner — Service Worker
 // Network-first for HTML/JS, cache-first for WASM binary.
 
-const CACHE_NAME = 'prism-scanner-v2';
+const CACHE_NAME = 'prism-scanner-v5';
 const ASSETS = [
     './',
     './index.html',
