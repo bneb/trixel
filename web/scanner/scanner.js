@@ -60,8 +60,25 @@ function showDebug(msg, color = '#ff4444') {
     debugOverlay.textContent = msg;
 }
 
+// ---- Clean Camera Teardown ----
+function stopCamera() {
+    stopScanLoop();
+    if (video.srcObject) {
+        try {
+            const stream = video.srcObject;
+            if (stream && stream.getTracks) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+        } catch (e) {
+            console.warn('Error stopping stream tracks:', e);
+        }
+        video.srcObject = null;
+    }
+}
+
 // ---- Android & iOS Resilient Camera Starter ----
 async function startCamera() {
+    stopCamera();
     setStatus('loading', 'Starting camera...');
     
     // Ensure critical mobile video element attributes
@@ -105,6 +122,16 @@ async function startCamera() {
         return;
     }
 
+    // Handle OS suspending camera track on sleep
+    stream.getVideoTracks().forEach(track => {
+        track.onended = () => {
+            console.warn('Camera track ended by OS/sleep');
+            stopCamera();
+            cameraPrompt.classList.remove('hidden');
+            setStatus('ready', 'Tap to re-enable camera');
+        };
+    });
+
     cameraPrompt.classList.add('hidden');
     video.srcObject = stream;
 
@@ -132,6 +159,30 @@ async function startCamera() {
 startCamBtn?.addEventListener('click', (e) => {
     e.stopPropagation();
     startCamera();
+});
+
+viewfinder?.addEventListener('click', () => {
+    if (!scanning && resultDiv.classList.contains('hidden')) {
+        startCamera();
+    }
+});
+
+// Automatic wake-up when returning from lock screen or other apps
+document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState === 'visible') {
+        if (resultDiv.classList.contains('hidden') && wasmReady) {
+            console.log('App resumed from sleep, re-acquiring camera...');
+            await startCamera();
+        }
+    } else {
+        stopCamera();
+    }
+});
+
+window.addEventListener('focus', async () => {
+    if (document.visibilityState === 'visible' && !scanning && resultDiv.classList.contains('hidden') && wasmReady) {
+        await startCamera();
+    }
 });
 
 // Calculate video crop box corresponding to on-screen reticle
