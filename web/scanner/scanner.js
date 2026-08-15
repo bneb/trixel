@@ -48,28 +48,71 @@ async function initWasm() {
     }
 }
 
+const cameraPrompt = document.getElementById('camera-prompt');
+const startCamBtn = document.getElementById('start-cam-btn');
+
 // ---- Camera ----
 async function startCamera() {
+    setStatus('loading', 'Starting camera...');
+    
+    // Ensure critical iOS Safari video properties
+    video.muted = true;
+    video.playsInline = true;
+    video.setAttribute('playsinline', '');
+    video.setAttribute('webkit-playsinline', '');
+    video.setAttribute('muted', '');
+    video.setAttribute('autoplay', '');
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        console.warn('getUserMedia not supported in this browser context');
+        cameraPrompt.classList.remove('hidden');
+        setStatus('ready', 'Use Upload Image');
+        return;
+    }
+
+    let stream = null;
     try {
-        setStatus('loading', 'Starting camera...');
-        const stream = await navigator.mediaDevices.getUserMedia({
+        // Preferred mobile environment camera
+        stream = await navigator.mediaDevices.getUserMedia({
             video: {
                 facingMode: { ideal: 'environment' },
-                width: { ideal: 1920, min: 1280 },
-                height: { ideal: 1080, min: 720 },
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
             },
             audio: false,
         });
-        video.srcObject = stream;
-        await video.play();
-        setStatus('scanning', 'Align code within frame');
-        scanning = true;
-        startScanLoop();
-    } catch (e) {
-        console.warn('Camera access denied or unavailable:', e);
-        setStatus('ready', 'No camera — use Upload');
+    } catch (err1) {
+        console.warn('Environment camera request failed, retrying generic video:', err1);
+        try {
+            // Unconstrained video fallback
+            stream = await navigator.mediaDevices.getUserMedia({
+                video: true,
+                audio: false,
+            });
+        } catch (err2) {
+            console.error('All getUserMedia requests failed:', err2);
+            cameraPrompt.classList.remove('hidden');
+            setStatus('ready', 'Tap Enable Camera or use Upload');
+            return;
+        }
     }
+
+    cameraPrompt.classList.add('hidden');
+    video.srcObject = stream;
+    try {
+        await video.play();
+    } catch (e) {
+        console.warn('video.play() was prevented:', e);
+    }
+    setStatus('scanning', 'Align code within frame');
+    scanning = true;
+    startScanLoop();
 }
+
+startCamBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    startCamera();
+});
 
 // Calculate video crop box corresponding to on-screen reticle
 function getReticleCrop(scaleFactor = 1.0) {
