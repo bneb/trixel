@@ -205,12 +205,12 @@ function startScanLoop() {
             frameIndex++;
             framesScanned++;
 
-            // Multi-scale candidate windows:
-            const scales = [1.0, 0.88, 1.12, 1.25];
+            // Candidate 1: Reticle crop with scale jitter
+            const scales = [1.0, 0.85, 1.15, 1.30, 0.70];
             const currentScale = scales[frameIndex % scales.length];
-
             const crop = getReticleCrop(currentScale);
-            if (crop && crop.sw > 10 && crop.sh > 10) {
+
+            if (crop && crop.sw > 20 && crop.sh > 20) {
                 offscreenCtx.drawImage(
                     video,
                     crop.sx, crop.sy, crop.sw, crop.sh,
@@ -223,6 +223,25 @@ function startScanLoop() {
                 if (prismResult) {
                     showDebug('✓ ' + prismResult, '#00ff88');
                     onDecodeSuccess(prismResult);
+                    return;
+                }
+            }
+
+            // Candidate 2: Full-sensor central square crop (for whole-screen alignment)
+            if (frameIndex % 2 === 0) {
+                const minDim = Math.min(vw, vh);
+                const csx = (vw - minDim) / 2;
+                const csy = (vh - minDim) / 2;
+                offscreenCtx.drawImage(
+                    video,
+                    csx, csy, minDim, minDim,
+                    0, 0, SCAN_RES, SCAN_RES
+                );
+                const centerData = offscreenCtx.getImageData(0, 0, SCAN_RES, SCAN_RES);
+                const centerResult = prismScanner.scan_frame(centerData.data, SCAN_RES, SCAN_RES);
+                if (centerResult) {
+                    showDebug('✓ ' + centerResult, '#00ff88');
+                    onDecodeSuccess(centerResult);
                     return;
                 }
             }
