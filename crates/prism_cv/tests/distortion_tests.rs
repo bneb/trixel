@@ -361,4 +361,45 @@ fn test_decode_under_pure_white_background_rotated() {
     assert_eq!(&decoded[..PAYLOAD.len()], PAYLOAD, "Decoded payload must match on rotated white canvas");
 }
 
+#[test]
+fn test_decode_under_one_third_spatial_occlusion() {
+    let embedded = embed_payload(384, 256);
+    let (w, h) = embedded.dimensions();
+
+    // 1. Blackout the left 30% of the image (continuous physical burst erasure)
+    let mut occluded = embedded.clone();
+    let cut_x = (w as f32 * 0.30) as u32;
+    for y in 0..h {
+        for x in 0..cut_x {
+            occluded.put_pixel(x, y, Rgb([0, 0, 0]));
+        }
+    }
+
+    let decoded = PrismExtractor::new()
+        .extract(&occluded)
+        .expect("QC-LDPC + Spatial Interleaver must self-heal under 30% continuous spatial occlusion");
+
+    assert_eq!(&decoded[..PAYLOAD.len()], PAYLOAD, "Decoded payload must match under 30% left blackout");
+
+    // 2. Center 30% circular / rectangular occlusion (sticker or coffee stain)
+    let mut center_occluded = embedded.clone();
+    let cx = w / 2;
+    let cy = h / 2;
+    let rw = (w as f32 * 0.28) as u32;
+    let rh = (h as f32 * 0.28) as u32;
+
+    for y in (cy - rh / 2)..(cy + rh / 2) {
+        for x in (cx - rw / 2)..(cx + rw / 2) {
+            center_occluded.put_pixel(x, y, Rgb([240, 240, 240]));
+        }
+    }
+
+    let decoded_center = PrismExtractor::new()
+        .extract(&center_occluded)
+        .expect("QC-LDPC must recover under central 30% sticker occlusion");
+
+    assert_eq!(&decoded_center[..PAYLOAD.len()], PAYLOAD, "Decoded payload must match under central sticker occlusion");
+}
+
+
 
