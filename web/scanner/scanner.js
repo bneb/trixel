@@ -135,21 +135,23 @@ async function startCamera() {
     cameraPrompt.classList.add('hidden');
     video.srcObject = stream;
 
-    // Wait for Android Chrome metadata before calling play()
-    await new Promise((resolve) => {
-        if (video.readyState >= 2 && video.videoWidth > 0) {
-            return resolve();
-        }
-        video.onloadedmetadata = () => resolve();
-        video.onloadeddata = () => resolve();
-        setTimeout(resolve, 800);
-    });
-
+    // Immediately trigger play() to preserve browser activation context
     try {
         await video.play();
     } catch (e) {
-        console.warn('video.play() rejected:', e);
+        console.warn('Immediate video.play() rejected:', e);
+        cameraPrompt.classList.remove('hidden');
+        setStatus('ready', 'Tap screen to start video');
     }
+
+    video.oncanplay = () => {
+        cameraPrompt.classList.add('hidden');
+        if (!scanning && wasmReady && resultDiv.classList.contains('hidden')) {
+            setStatus('scanning', 'Align code within frame');
+            scanning = true;
+            startScanLoop();
+        }
+    };
 
     setStatus('scanning', 'Align code within frame');
     scanning = true;
@@ -162,8 +164,16 @@ startCamBtn?.addEventListener('click', (e) => {
 });
 
 viewfinder?.addEventListener('click', () => {
-    if (!scanning && resultDiv.classList.contains('hidden')) {
+    if (video.paused && video.srcObject) {
+        video.play().catch(console.warn);
+    } else if (!scanning && resultDiv.classList.contains('hidden')) {
         startCamera();
+    }
+});
+
+document.body.addEventListener('click', () => {
+    if (video.paused && video.srcObject) {
+        video.play().catch(console.warn);
     }
 });
 
