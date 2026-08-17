@@ -252,3 +252,59 @@ fn test_perspective_skew_affine_recovery() {
     assert!((sx_r - sx_e).abs() < 0.08, "sx error under perspective skew");
     assert!((sy_r - sy_e).abs() < 0.08, "sy error under perspective skew");
 }
+
+#[test]
+fn test_phase_correlation_translation_recovery() {
+    use prism_sync::estimate_pilot_translation;
+
+    let size = 128;
+    let config = PilotConfig {
+        ku: 16.0,
+        kv: 16.0,
+        amplitude: 2.0,
+    };
+    let base_image = pilot_image(size, &config);
+
+    // Test multiple translation vectors (dx, dy)
+    let test_shifts = vec![
+        (0.0f32, 0.0f32),
+        (3.0f32, 5.0f32),
+        (-4.0f32, 7.0f32),
+        (6.0f32, -3.0f32),
+        (-5.0f32, -5.0f32),
+    ];
+
+    for (target_dx, target_dy) in test_shifts {
+        let mut shifted = vec![128.0f32; size * size];
+        for y in 0..size {
+            for x in 0..size {
+                let sx = (x as f32 - target_dx).rem_euclid(size as f32);
+                let sy = (y as f32 - target_dy).rem_euclid(size as f32);
+                shifted[y * size + x] = bilinear_sample(&base_image, size, size, sx, sy);
+            }
+        }
+
+        let (est_dx, est_dy, conf) = estimate_pilot_translation(&shifted, size, size, &config)
+            .expect("Translation must be recovered");
+
+        eprintln!(
+            "Target ({:+.1}, {:+.1}) -> Estimated ({:+.4}, {:+.4}), conf: {:.4}",
+            target_dx, target_dy, est_dx, est_dy, conf
+        );
+
+        let lambda_x = size as f32 / config.ku;
+        let lambda_y = size as f32 / config.kv;
+
+        let phase_dist = |a: f32, b: f32, period: f32| -> f32 {
+            let diff = (a - b).rem_euclid(period);
+            diff.min(period - diff)
+        };
+
+        let err_x = phase_dist(est_dx, target_dx, lambda_x);
+        let err_y = phase_dist(est_dy, target_dy, lambda_y);
+        assert!(err_x < 0.2, "dx phase error {} too large for target {}", err_x, target_dx);
+        assert!(err_y < 0.2, "dy phase error {} too large for target {}", err_y, target_dy);
+    }
+}
+
+

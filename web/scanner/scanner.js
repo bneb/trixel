@@ -31,8 +31,8 @@ let frameIndex = 0;
 let framesScanned = 0;
 let lastLogTime = 0;
 
-// Standard square sampling resolution for reticle scan (divisible by 32 & 24)
-const SCAN_RES = 384;
+// Power-of-two square sampling resolution for instantaneous 2D FFT synchronization (256x256)
+const SCAN_RES = 256;
 const offscreenCanvas = document.createElement('canvas');
 offscreenCanvas.width = SCAN_RES;
 offscreenCanvas.height = SCAN_RES;

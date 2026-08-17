@@ -50,10 +50,10 @@ pub struct EmbedConfig {
 impl Default for EmbedConfig {
     fn default() -> Self {
         Self {
-            pilot_amplitude: 0.75,
-            carrier_scale_b: 1.20,
-            carrier_scale_l: 0.65,
-            jnd_clamp_max: 6.0,
+            pilot_amplitude: 0.25,
+            carrier_scale_b: 0.65,
+            carrier_scale_l: 0.35,
+            jnd_clamp_max: 4.5,
             diffusion_step: 0.5,
         }
     }
@@ -146,10 +146,14 @@ impl PrismEmbedder {
         // 5. Compute Yang-Bovik JND Map
         let jnd_map = compute_spatial_jnd(&gray_luma, width, height);
 
-        // 6. Inject 2D Fourier Pilot Grid into L*
+        // 6. Inject 2D Fourier Pilot Grid into L* and b* (avoiding one-sided clipping on white)
         let pilot = generate_pilot_grid(width, height, &self.pilot_config);
         for i in 0..width * height {
-            lab_l[i] = (lab_l[i] + pilot[i]).clamp(0.0, 100.0);
+            if lab_l[i] > 85.0 || lab_l[i] < 15.0 {
+                lab_b[i] = (lab_b[i] + pilot[i] * 1.5).clamp(-128.0, 127.0);
+            } else {
+                lab_l[i] = (lab_l[i] + pilot[i]).clamp(0.0, 100.0);
+            }
         }
 
         // 7. Inject JND-weighted LDPC carrier into b* channel (or L* in extreme shadows/highlights)

@@ -60,8 +60,8 @@ pub fn detect_pilot_peaks(
     }
 
     let target_r = (config.ku * config.ku + config.kv * config.kv).sqrt();
-    let r_min = (target_r * 0.5) as usize;
-    let r_max = (target_r * 1.5).min((width.min(height) / 2 - 2) as f32) as usize;
+    let r_min = (target_r * 0.80) as usize;
+    let r_max = (target_r * 1.20).min((width.min(height) / 2 - 2) as f32) as usize;
 
     let w = width as f32;
     let h = height as f32;
@@ -98,6 +98,30 @@ pub fn detect_pilot_peaks(
     }
 
     if peaks.len() == 4 {
+        // Validate conjugate radial symmetry across the 4 quadrants
+        let r0 = (peaks[0].u * peaks[0].u + peaks[0].v * peaks[0].v).sqrt();
+        let r1 = (peaks[1].u * peaks[1].u + peaks[1].v * peaks[1].v).sqrt();
+        let r2 = (peaks[2].u * peaks[2].u + peaks[2].v * peaks[2].v).sqrt();
+        let r3 = (peaks[3].u * peaks[3].u + peaks[3].v * peaks[3].v).sqrt();
+
+        let r_mean = 0.25 * (r0 + r1 + r2 + r3);
+        let max_r_diff = (r0 - r_mean).abs().max((r1 - r_mean).abs()).max((r2 - r_mean).abs()).max((r3 - r_mean).abs());
+
+        // Max allowable radial deviation across conjugate spikes
+        if max_r_diff > 2.5 {
+            return Err(SyncError::PeaksNotFound);
+        }
+
+        // Validate that estimate_affine yields a physical aspect ratio and scale
+        if let Ok((_theta, sx, sy)) = estimate_affine(&peaks, config) {
+            let aspect = sx / sy;
+            if aspect < 0.70 || aspect > 1.40 || sx < 0.65 || sx > 1.45 || sy < 0.65 || sy > 1.45 {
+                return Err(SyncError::PeaksNotFound);
+            }
+        } else {
+            return Err(SyncError::PeaksNotFound);
+        }
+
         Ok(peaks)
     } else {
         Err(SyncError::PeaksNotFound)
@@ -105,7 +129,7 @@ pub fn detect_pilot_peaks(
 }
 
 /// Finds the strongest magnitude bin in a quadrant restricted to the pilot
-/// radius band. Returns the raw bin indices plus magnitude.
+/// radius band, using local spectral contrast (peak vs local annular background).
 fn find_quadrant_peak(
     mag: &[f32],
     width: usize,
@@ -117,7 +141,7 @@ fn find_quadrant_peak(
     r_min: usize,
     r_max: usize,
 ) -> Option<(usize, usize, f32)> {
-    let mut best_mag = 0.0f32;
+    let mut best_contrast = 0.0f32;
     let mut best_coord = None;
 
     for y in y_start..y_end {
@@ -128,9 +152,25 @@ fn find_quadrant_peak(
 
             if r >= r_min as f32 && r <= r_max as f32 {
                 let m = mag[y * width + x];
-                if m > best_mag {
-                    best_mag = m;
-                    best_coord = Some((x, y, m));
+                if m > 1e-6 {
+                    // Measure local background mean around this bin (radius 2 neighborhood excluding self)
+                    let mut bg_sum = 0.0f32;
+                    let mut bg_count = 0.0f32;
+                    for ny in (y.saturating_sub(2))..=(y + 2).min(height - 1) {
+                        for nx in (x.saturating_sub(2))..=(x + 2).min(width - 1) {
+                            if (nx != x || ny != y) && (nx >= x_start && nx < x_end && ny >= y_start && ny < y_end) {
+                                bg_sum += mag[ny * width + nx];
+                                bg_count += 1.0;
+                            }
+                        }
+                    }
+                    let bg_mean = if bg_count > 0.0 { bg_sum / bg_count } else { 1e-6 };
+                    let contrast = m / bg_mean.max(1e-6);
+
+                    if contrast > best_contrast && contrast > 1.25 {
+                        best_contrast = contrast;
+                        best_coord = Some((x, y, m));
+                    }
                 }
             }
         }

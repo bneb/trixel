@@ -289,3 +289,76 @@ fn test_decode_under_mild_perspective_warp() {
         }
     }
 }
+
+#[test]
+fn test_decode_under_rotation_and_scale_sync() {
+    let size = 256;
+    let source = synthetic_source(size, size);
+    let embedded = PrismEmbedder::new()
+        .embed(&source, PAYLOAD)
+        .expect("Embedding must succeed");
+
+    for &theta_deg in &[8.0f32, -12.0f32, 15.0f32] {
+        let (s, c) = theta_deg.to_radians().sin_cos();
+        let cx = (size as f32 - 1.0) * 0.5;
+        let cy = (size as f32 - 1.0) * 0.5;
+
+        let mut rotated = RgbImage::new(size, size);
+        for y in 0..size {
+            let dy = y as f32 - cy;
+            for x in 0..size {
+                let dx = x as f32 - cx;
+                let sx = c * dx + s * dy + cx;
+                let sy = -s * dx + c * dy + cy;
+                rotated.put_pixel(x, y, sample_bilinear(&embedded, sx, sy));
+            }
+        }
+
+        let decoded = PrismExtractor::new()
+            .extract(&rotated)
+            .unwrap_or_else(|e| panic!("PrismExtractor failed at theta={theta_deg} deg: {e}"));
+
+        assert_eq!(&decoded[..PAYLOAD.len()], PAYLOAD, "Decoded payload must match at theta={theta_deg} deg");
+    }
+}
+
+#[test]
+fn test_decode_under_pure_white_background_rotated() {
+    let size = 256;
+    // Pure white canvas with text-like dark center
+    let mut white_img = RgbImage::from_pixel(size, size, Rgb([255, 255, 255]));
+    for y in 100..156 {
+        for x in 60..196 {
+            white_img.put_pixel(x, y, Rgb([20, 20, 20]));
+        }
+    }
+
+    let embedded = PrismEmbedder::new()
+        .embed(&white_img, PAYLOAD)
+        .expect("Embedding into white image must succeed");
+
+    // Rotate pure white image by -9.5 degrees
+    let theta_deg = -9.5f32;
+    let (s, c) = theta_deg.to_radians().sin_cos();
+    let cx = (size as f32 - 1.0) * 0.5;
+    let cy = (size as f32 - 1.0) * 0.5;
+
+    let mut rotated = RgbImage::new(size, size);
+    for y in 0..size {
+        let dy = y as f32 - cy;
+        for x in 0..size {
+            let dx = x as f32 - cx;
+            let sx = c * dx + s * dy + cx;
+            let sy = -s * dx + c * dy + cy;
+            rotated.put_pixel(x, y, sample_bilinear(&embedded, sx, sy));
+        }
+    }
+
+    let decoded = PrismExtractor::new()
+        .extract(&rotated)
+        .expect("Must decode rotated pure white canvas using Fourier pilot sync");
+
+    assert_eq!(&decoded[..PAYLOAD.len()], PAYLOAD, "Decoded payload must match on rotated white canvas");
+}
+
+

@@ -1,0 +1,16 @@
+{
+  "name": "prism_wasm",
+  "type": "module",
+  "version": "0.1.0",
+  "license": "MIT",
+  "files": [
+    "prism_wasm_bg.wasm",
+    "prism_wasm.js",
+    "prism_wasm.d.ts"
+  ],
+  "main": "prism_wasm.js",
+  "types": "prism_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

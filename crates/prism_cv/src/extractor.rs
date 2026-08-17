@@ -66,6 +66,28 @@ impl PrismExtractor {
             }
         }
 
+        // 1.5. Fourier Pilot Detection & Affine Geometric Rectification
+        let pilot_config = prism_sync::PilotConfig::default();
+        if width.is_power_of_two() && height.is_power_of_two() {
+            let peaks_opt = prism_sync::detect_pilot_peaks(&lab_l, width, height, &pilot_config)
+                .or_else(|_| prism_sync::detect_pilot_peaks(&lab_b, width, height, &pilot_config));
+
+            match peaks_opt {
+                Ok(peaks) => {
+                    if let Ok((theta, sx, sy)) = prism_sync::estimate_affine(&peaks, &pilot_config) {
+                        eprintln!("PILOT DETECTED -> theta: {:+.2} deg, sx: {:.4}, sy: {:.4}", theta.to_degrees(), sx, sy);
+                        if theta.abs() > 0.003 || (sx - 1.0).abs() > 0.015 || (sy - 1.0).abs() > 0.015 {
+                            lab_l = rectify_affine(&lab_l, width, height, theta, sx, sy);
+                            lab_b = rectify_affine(&lab_b, width, height, theta, sx, sy);
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("PILOT PEAKS NOT FOUND: {:?}", e);
+                }
+            }
+        }
+
         // 2. Extract Residual & Integrate Correlation Energy per Block
         let block_w = width as f32 / GRID_BLOCKS_X as f32;
         let block_h = height as f32 / GRID_BLOCKS_Y as f32;
@@ -265,3 +287,46 @@ fn fit_plane(
 
     Some((cx, cy, det_a / det, det_p / det, det_q / det))
 }
+
+/// Rectifies a 2D scalar channel given forward transformation parameters (theta, scale_x, scale_y).
+fn rectify_affine(channel: &[f32], width: usize, height: usize, theta: f32, sx: f32, sy: f32) -> Vec<f32> {
+    let cx = (width as f32 - 1.0) * 0.5;
+    let cy = (height as f32 - 1.0) * 0.5;
+    let (s, c) = theta.sin_cos();
+    let mut out = vec![0.0f32; width * height];
+
+    for y in 0..height {
+        let dy = y as f32 - cy;
+        for x in 0..width {
+            let dx = x as f32 - cx;
+            let src_x = (c * dx - s * dy) * sx + cx;
+            let src_y = (s * dx + c * dy) * sy + cy;
+            out[y * width + x] = bilinear_sample_float(channel, width, height, src_x, src_y);
+        }
+    }
+
+    out
+}
+
+/// Bilinear sampling of a 1D-flattened float image grid at fractional coordinates.
+fn bilinear_sample_float(img: &[f32], w: usize, h: usize, x: f32, y: f32) -> f32 {
+    let x_clamped = x.clamp(0.0, (w - 1) as f32);
+    let y_clamped = y.clamp(0.0, (h - 1) as f32);
+    let x0 = x_clamped.floor() as usize;
+    let y0 = y_clamped.floor() as usize;
+    let x1 = (x0 + 1).min(w - 1);
+    let y1 = (y0 + 1).min(h - 1);
+    let fx = x_clamped - x0 as f32;
+    let fy = y_clamped - y0 as f32;
+
+    let p00 = img[y0 * w + x0];
+    let p10 = img[y0 * w + x1];
+    let p01 = img[y1 * w + x0];
+    let p11 = img[y1 * w + x1];
+
+    p00 * (1.0 - fx) * (1.0 - fy)
+        + p10 * fx * (1.0 - fy)
+        + p01 * (1.0 - fx) * fy
+        + p11 * fx * fy
+}
+
