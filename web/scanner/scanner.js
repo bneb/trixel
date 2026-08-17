@@ -232,7 +232,66 @@ function getReticleCrop(scaleFactor = 1.0) {
     sw = Math.min(vw - sx, sw);
     sh = Math.min(vh - sy, sh);
 
-    return { sx, sy, sw, sh };
+// Automatic high-contrast card boundary localizer
+function findCardBoundingBox(data, w, h) {
+    const rowSums = new Float32Array(h);
+    const colSums = new Float32Array(w);
+    const step = 4;
+
+    for (let y = 0; y < h; y += step) {
+        for (let x = 0; x < w; x += step) {
+            const idx = (y * w + x) * 4;
+            const lum = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+            rowSums[y] += lum;
+            colSums[x] += lum;
+        }
+    }
+
+    let leftEdge = 0, rightEdge = w - 1;
+    let maxGradL = 0, maxGradR = 0;
+
+    for (let x = step * 2; x < w / 2; x += step) {
+        const grad = Math.abs(colSums[x] - colSums[x - step]);
+        if (grad > maxGradL && grad > 120) {
+            maxGradL = grad;
+            leftEdge = x;
+        }
+    }
+
+    for (let x = w - step * 2; x > w / 2; x -= step) {
+        const grad = Math.abs(colSums[x] - colSums[x + step]);
+        if (grad > maxGradR && grad > 120) {
+            maxGradR = grad;
+            rightEdge = x;
+        }
+    }
+
+    let topEdge = 0, bottomEdge = h - 1;
+    let maxGradT = 0, maxGradB = 0;
+
+    for (let y = step * 2; y < h / 2; y += step) {
+        const grad = Math.abs(rowSums[y] - rowSums[y - step]);
+        if (grad > maxGradT && grad > 120) {
+            maxGradT = grad;
+            topEdge = y;
+        }
+    }
+
+    for (let y = h - step * 2; y > h / 2; y -= step) {
+        const grad = Math.abs(rowSums[y] - rowSums[y + step]);
+        if (grad > maxGradB && grad > 120) {
+            maxGradB = grad;
+            bottomEdge = y;
+        }
+    }
+
+    const cardW = rightEdge - leftEdge;
+    const cardH = bottomEdge - topEdge;
+
+    if (cardW > w * 0.35 && cardH > h * 0.35 && (leftEdge > 0 || rightEdge < w - 1 || topEdge > 0 || bottomEdge < h - 1)) {
+        return { x: leftEdge, y: topEdge, width: cardW, height: cardH };
+    }
+    return null;
 }
 
 // ---- Scan Loop ----
@@ -276,9 +335,31 @@ function startScanLoop() {
                     onDecodeSuccess(prismResult);
                     return;
                 }
+
+                // Candidate 2: Auto-snapped card bounding box (locates exact white/colored card inside crop)
+                const card = findCardBoundingBox(imgData.data, SCAN_RES, SCAN_RES);
+                if (card) {
+                    const cardSX = crop.sx + (card.x / SCAN_RES) * crop.sw;
+                    const cardSY = crop.sy + (card.y / SCAN_RES) * crop.sh;
+                    const cardSW = (card.width / SCAN_RES) * crop.sw;
+                    const cardSH = (card.height / SCAN_RES) * crop.sh;
+
+                    offscreenCtx.drawImage(
+                        video,
+                        cardSX, cardSY, cardSW, cardSH,
+                        0, 0, SCAN_RES, SCAN_RES
+                    );
+                    const cardData = offscreenCtx.getImageData(0, 0, SCAN_RES, SCAN_RES);
+                    const cardResult = prismScanner.scan_frame(cardData.data, SCAN_RES, SCAN_RES);
+                    if (cardResult) {
+                        showDebug('✓ [Card Locked] ' + cardResult, '#00ff88');
+                        onDecodeSuccess(cardResult);
+                        return;
+                    }
+                }
             }
 
-            // Candidate 2: Full-sensor central square crop (for whole-screen alignment)
+            // Candidate 3: Full-sensor central square crop (for whole-screen alignment)
             if (frameIndex % 2 === 0) {
                 const minDim = Math.min(vw, vh);
                 const csx = (vw - minDim) / 2;
