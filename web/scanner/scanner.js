@@ -3,7 +3,7 @@
 // Continuous HVS Residual Modulation + QC-LDPC Soft Belief Propagation
 // =========================================================================
 
-import initPrism, { PrismScanner } from './prism_pkg/prism_wasm.js?v=5';
+import initPrism, { PrismScanner } from './prism_pkg/prism_wasm.js';
 
 // ---- DOM Elements ----
 const video = document.getElementById('camera');
