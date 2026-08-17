@@ -1,7 +1,7 @@
 // PrismCode Scanner — Service Worker
 // Network-first for HTML/JS, cache-first for WASM binary.
 
-const CACHE_NAME = 'prism-scanner-v5';
+const CACHE_NAME = 'prism-scanner-v9';
 const ASSETS = [
     './',
     './index.html',
@@ -17,18 +17,15 @@ const CACHE_FIRST_PATHS = ['.wasm'];
 
 // Install: cache all app shell assets
 self.addEventListener('install', (event) => {
-    event.waitUntil(
-        caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
-    );
     self.skipWaiting();
 });
 
-// Activate: clean up old caches
+// Activate: purge ALL old caches aggressively
 self.addEventListener('activate', (event) => {
     event.waitUntil(
         caches.keys().then((keys) =>
             Promise.all(
-                keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))
+                keys.map((k) => caches.delete(k))
             )
         )
     );

@@ -97,6 +97,7 @@ async function startCamera() {
     }
 
     let stream = null;
+    let lastErr = null;
     const constraintList = [
         // 1. Back environment camera with ideal resolution
         { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
@@ -111,14 +112,15 @@ async function startCamera() {
             stream = await navigator.mediaDevices.getUserMedia(constraints);
             if (stream) break;
         } catch (err) {
+            lastErr = err;
             console.warn('Constraint attempt failed:', constraints, err);
         }
     }
 
     if (!stream) {
         cameraPrompt.classList.remove('hidden');
-        setStatus('error', 'Camera permission denied or blocked');
-        showDebug('Permission denied. Tap the 🔒 icon in Chrome to allow camera access.');
+        setStatus('error', 'Camera access paused — Tap Enable');
+        showDebug(`CAMERA_ERROR: ${lastErr?.name || 'PermissionDenied'}: ${lastErr?.message || 'Tap Enable Camera below'}`);
         return;
     }
 

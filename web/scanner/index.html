@@ -83,10 +83,15 @@
 
     <script>
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js?v=5').catch(() => { });
+            navigator.serviceWorker.getRegistrations().then(registrations => {
+                for (const registration of registrations) {
+                    registration.update();
+                }
+            });
+            navigator.serviceWorker.register('sw.js?v=9').catch(() => { });
         }
     </script>
-    <script type="module" src="scanner.js?v=5"></script>
+    <script type="module" src="scanner.js?v=9"></script>
 </body>
 
 </html>
